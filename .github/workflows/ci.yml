@@ -13,13 +13,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Shell syntax
-        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
+        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh tests/platform_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
       - name: Native build
         run: make -C native/vsh clean all
       - name: Native smoke
         run: bash tests/vsh_smoke.sh
       - name: Native benchmark
         run: make -C native/vsh check
+      - name: Installed platform smoke
+        run: bash tests/platform_smoke.sh
       - name: Sanitizer build and smoke
         env:
           ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
