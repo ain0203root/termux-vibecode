@@ -2,7 +2,9 @@
 set -Eeuo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_HOME="$(mktemp -d)"
-trap 'rm -rf "$TEMP_HOME"' EXIT
+STATUS_FILE="$(mktemp)"
+ERROR_FILE="$(mktemp)"
+trap 'rm -rf "$TEMP_HOME"; rm -f "$STATUS_FILE" "$ERROR_FILE"' EXIT
 
 HOME="$TEMP_HOME" bash "$ROOT/platform/install.sh"
 export HOME="$TEMP_HOME"
@@ -15,20 +17,23 @@ test -d "$workspace/build"
 test -d "$workspace/cache"
 test -d "$workspace/tmp"
 
+printf 'printf installed-ok\\n' | tv shell | grep -qx 'installed-ok'
+
 set +e
-tv workspace '../escape' >/tmp/vibecode-platform-smoke.err 2>&1
+tv workspace '../escape' >"$ERROR_FILE" 2>&1
 rc=$?
 set -e
 (( rc == 2 ))
 
-tv status >/tmp/vibecode-platform-status.json
-python3 - <<'PY'
+tv status >"$STATUS_FILE"
+python3 - "$STATUS_FILE" <<'PY'
 import json
-from pathlib import Path
+import sys
 
-payload = json.loads(Path('/tmp/vibecode-platform-status.json').read_text())
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
 assert 'platform' in payload
 assert 'cpu_count' in payload
+assert 'android' in payload
 PY
 
 printf '%s\n' 'platform smoke: PASS'
