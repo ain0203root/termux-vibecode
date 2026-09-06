@@ -18,7 +18,10 @@ trap 'rm -f "$tmp"' EXIT
 printf 'printf abc > %s\n' "$tmp" | "$VSH" >/dev/null
 test "$(cat "$tmp")" = "abc"
 
-printf 'export VSH_TEST=ok\necho $VSH_TEST\n' | "$VSH" | grep -qx 'ok'
+printf 'export VSH_TEST=ok\necho $VSH_TEST\necho ${VSH_TEST}\n' | "$VSH" | grep -qx 'ok$'
+
+printf 'which sh\n' | "$VSH" | grep -q '/sh$'
+printf 'echo $$\n' | "$VSH" | grep -Eq '^[0-9]+$'
 
 printf 'true\n' | "$VSH" >/dev/null
 printf 'false\n' | "$VSH" >/dev/null
