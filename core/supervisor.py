@@ -20,6 +20,7 @@ class Service:
     command: str
     restart: bool = True
     delay: float = 1.0
+    max_delay: float = 30.0
 
 
 def load() -> list[Service]:
@@ -105,13 +106,21 @@ def snapshot() -> list[dict[str, object]]:
 
 def supervise() -> None:
     services = load()
+    backoff = {s.name: s.delay for s in services}
+    next_start = {s.name: 0.0 for s in services}
     for service in services:
         start(service)
     while True:
+        now = time.monotonic()
         for service in services:
-            if running(service.name) is None and service.restart:
-                start(service)
-        time.sleep(1.0)
+            if running(service.name) is not None:
+                continue
+            if not service.restart or now < next_start[service.name]:
+                continue
+            start(service)
+            next_start[service.name] = now + backoff[service.name]
+            backoff[service.name] = min(backoff[service.name] * 2.0, service.max_delay)
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
@@ -120,12 +129,15 @@ if __name__ == "__main__":
     services = {s.name: s for s in load()}
     if op == "status":
         print(json.dumps(snapshot(), indent=2))
-    elif op == "start" and len(sys.argv) > 2:
-        print(start(services[sys.argv[2]]))
-    elif op == "stop" and len(sys.argv) > 2:
-        stop(services[sys.argv[2]])
-    elif op == "restart" and len(sys.argv) > 2:
-        stop(services[sys.argv[2]]); print(start(services[sys.argv[2]]))
+    elif op in {"start", "stop", "restart"} and len(sys.argv) > 2:
+        service = services[sys.argv[2]]
+        if op == "start":
+            print(start(service))
+        elif op == "stop":
+            stop(service)
+        else:
+            stop(service)
+            print(start(service))
     elif op == "supervise":
         supervise()
     else:
