@@ -34,7 +34,7 @@ jobs:
           test "${#packages[@]}" -eq 1
           package="${packages[0]}"
           dpkg-deb --info "$package" >/dev/null
-          listing="$(dpkg-deb --contents "$package" | awk '{print $NF}' | sed 's#^\./##')"
+          listing="$(dpkg-deb --contents "$package" | awk 'NF {print $NF}' | sed 's#^\./##')"
           printf '%s\n' "$listing"
           printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/bin/vsh'
           printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/share/doc/tvsh/README'
