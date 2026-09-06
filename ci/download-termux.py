@@ -6,8 +6,8 @@ import pathlib
 import sys
 from urllib.request import Request, urlopen
 
-URL = "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_universal.apk"
-EXPECTED_MIN_BYTES = 10_000_000
+URL = "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+github-debug_x86_64.apk"
+EXPECTED_BYTES = 35189933
 
 
 def main() -> int:
@@ -24,8 +24,8 @@ def main() -> int:
                 break
             handle.write(chunk)
     size = output.stat().st_size
-    if size < EXPECTED_MIN_BYTES:
-        raise SystemExit(f"downloaded APK is suspiciously small: {size} bytes")
+    if size != EXPECTED_BYTES:
+        raise SystemExit(f"unexpected APK size: got {size}, expected {EXPECTED_BYTES}")
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     print(f"termux_apk={output}")
     print(f"termux_apk_bytes={size}")
