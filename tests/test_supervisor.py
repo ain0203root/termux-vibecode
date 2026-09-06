@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -12,7 +13,12 @@ def load_module():
     spec = importlib.util.spec_from_file_location("vibecode_supervisor", SOURCE)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
