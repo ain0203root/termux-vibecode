@@ -3,14 +3,23 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 HOME = Path.home() / ".vibecode"
 LOG = HOME / "logs" / "events.jsonl"
+
+# The installed copy lives beside capabilities.py under ~/.vibecode.
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+try:
+    from capabilities import snapshot as capability_snapshot
+except ImportError:
+    capability_snapshot = None
 
 
 def emit(kind: str, **data: object) -> None:
@@ -45,10 +54,11 @@ def run(args: list[str]) -> tuple[int, str]:
 
 def status() -> dict[str, object]:
     total, used, free = shutil.disk_usage(Path.home())
-    data = {
-        "platform": platform.platform(),
-        "machine": platform.machine(),
-        "python": platform.python_version(),
+    data: dict[str, object] = {
+        "platform": os.uname().sysname if hasattr(os, "uname") else "unknown",
+        "kernel": os.uname().release if hasattr(os, "uname") else None,
+        "machine": os.uname().machine if hasattr(os, "uname") else None,
+        "python": sys.version.split()[0],
         "termux_prefix": os.getenv("PREFIX", ""),
         "home": str(Path.home()),
         "free_gib": round(free / 1024**3, 2),
@@ -58,6 +68,8 @@ def status() -> dict[str, object]:
     }
     rc, load = run(["cat", "/proc/loadavg"])
     data["loadavg"] = load if rc == 0 else None
+    if capability_snapshot is not None:
+        data["android"] = capability_snapshot()
     emit("status", **data)
     return data
 
@@ -69,14 +81,14 @@ def doctor() -> dict[str, object]:
     checks["procfs"] = Path("/proc").exists()
     checks["home"] = Path.home().exists()
     missing = [k for k, v in checks.items() if not v]
-    result = {"ok": not missing, "checks": checks, "missing": missing}
+    result: dict[str, object] = {"ok": not missing, "checks": checks, "missing": missing}
+    if capability_snapshot is not None:
+        result["capabilities"] = capability_snapshot()
     emit("doctor", **result)
     return result
 
 
 def main() -> None:
-    import sys
-
     op = sys.argv[1] if len(sys.argv) > 1 else "status"
     result = status() if op == "status" else doctor() if op == "doctor" else {"ok": False, "error": f"unknown op {op}"}
     print(json.dumps(result, indent=2, ensure_ascii=False))
