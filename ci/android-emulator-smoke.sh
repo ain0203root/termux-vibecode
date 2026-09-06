@@ -8,7 +8,7 @@ TERMUX_BASH=$TERMUX_PREFIX/bin/bash
 TERMUX_PATH=$TERMUX_PREFIX/bin:$TERMUX_PREFIX/bin/applets:/system/bin:/system/xbin
 TERMUX_APK="${TERMUX_APK:-${RUNNER_TEMP:-/tmp}/termux-app.apk}"
 REMOTE_TMP=/data/local/tmp/vibecode-smoke.sh
-REMOTE_SRC=/data/local/tmp/vibecode-src/native/vsh
+REMOTE_REPO=/data/local/tmp/vibecode-repo
 REMOTE_RESULT=$TERMUX_HOME/vibecode-emulator-result
 TERMUX_SCRIPT=$TERMUX_HOME/vibecode-smoke.sh
 
@@ -31,10 +31,13 @@ for _ in $(seq 1 60); do
 done
 adb shell run-as "$PKG" test -x "$TERMUX_BASH"
 
-adb shell mkdir -p "$REMOTE_SRC"
-adb push native/vsh/vsh.c "$REMOTE_SRC/vsh.c" >/dev/null
-adb push native/vsh/Makefile "$REMOTE_SRC/Makefile" >/dev/null
-adb push native/vsh/bench.c "$REMOTE_SRC/bench.c" >/dev/null
+adb shell rm -rf "$REMOTE_REPO"
+adb shell mkdir -p "$REMOTE_REPO"
+adb push platform "$REMOTE_REPO/platform" >/dev/null
+adb push core "$REMOTE_REPO/core" >/dev/null
+adb push config "$REMOTE_REPO/config" >/dev/null
+adb push services "$REMOTE_REPO/services" >/dev/null
+adb push native "$REMOTE_REPO/native" >/dev/null
 
 cat > /tmp/vibecode-smoke.sh <<'EOS'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -43,7 +46,8 @@ export HOME=/data/data/com.termux/files/home
 export PREFIX=/data/data/com.termux/files/usr
 export TMPDIR=$PREFIX/tmp
 export PATH=$PREFIX/bin:$PREFIX/bin/applets:/system/bin:/system/xbin
-ROOT="$HOME/vibecode-ci"
+REPO=/data/local/tmp/vibecode-repo
+STATE="$HOME/.vibecode"
 RESULT="$HOME/vibecode-emulator-result"
 exec >"$RESULT" 2>&1
 printf 'VIBECODE_ANDROID_SMOKE=1\n'
@@ -58,26 +62,49 @@ printf 'path=%s\n' "$PATH"
 
 command -v bash
 command -v pkg
-command -v clang || true
 
-pkg install -y clang make
-rm -rf "$ROOT"
-mkdir -p "$ROOT"
-cp -R /data/local/tmp/vibecode-src/native "$ROOT/"
-make -C "$ROOT/native/vsh" clean all
-printf 'native_build=PASS\n'
+pkg install -y clang make python git
+bash "$REPO/platform/install.sh"
 
-out=$(printf 'printf hello | tr a-z A-Z\n' | "$ROOT/native/vsh/vsh")
-printf 'pipeline=%s\n' "$out"
-test "$out" = "HELLO"
+test -L "$PREFIX/bin/tv"
+test -L "$PREFIX/bin/vsh"
+test "$(tv version)" = '0.1.0'
+printf 'install=PASS\n'
 
-out=$(printf 'export VIBECODE_TEST=ok\necho $VIBECODE_TEST\n' | "$ROOT/native/vsh/vsh")
-test "$out" = "ok"
-printf 'env_expansion=PASS\n'
+workspace=$(tv workspace android-smoke)
+for part in src build cache tmp; do test -d "$workspace/$part"; done
+printf 'workspace=PASS\n'
 
-out=$(printf 'echo $$\n' | "$ROOT/native/vsh/vsh")
-printf 'pid=%s\n' "$out"
-echo "$out" | grep -Eq '^[0-9]+$'
+printf 'printf shell-ok\\n' | tv shell | grep -qx 'shell-ok'
+printf 'vsh_shell=PASS\n'
+
+tv status > "$STATE/android-status.json"
+python3 - <<'PY'
+import json
+from pathlib import Path
+payload=json.loads(Path.home().joinpath('.vibecode/android-status.json').read_text())
+assert payload['termux_prefix'] == '/data/data/com.termux/files/usr'
+assert payload['cpu_count'] >= 1
+assert 'android' in payload
+PY
+printf 'status=PASS\n'
+
+tv doctor > "$STATE/android-doctor.json"
+python3 - <<'PY'
+import json
+from pathlib import Path
+payload=json.loads(Path.home().joinpath('.vibecode/android-doctor.json').read_text())
+assert payload['ok'] is True
+assert payload['required']['termux'] is True
+assert not payload['missing_required']
+PY
+printf 'doctor=PASS\n'
+
+bash "$REPO/platform/uninstall.sh" >/dev/null
+test ! -e "$PREFIX/bin/tv"
+test ! -e "$PREFIX/bin/vsh"
+test -d "$workspace/src"
+printf 'uninstall=PASS\n'
 
 printf 'android_capability=PASS\n'
 printf 'process_model=PASS\n'
