@@ -21,14 +21,19 @@ run_vsh() {
 }
 
 pipeline_output="$(run_vsh pipeline 'printf hello | tr a-z A-Z')"
-printf 'pipeline_output=%q\n' "$pipeline_output" >&2
+printf 'pipeline_output=%q\n' "$pipeline_output"
 [[ "$pipeline_output" == "HELLO" ]]
+printf '%s\n' 'gate.pipeline=PASS'
 
 echo_output="$(run_vsh echo 'echo VIBECODE_OK')"
+printf 'echo_output=%q\n' "$echo_output" >&2
 [[ "$echo_output" == "VIBECODE_OK" ]]
+printf '%s\n' 'gate.echo=PASS'
 
 pwd_output="$(run_vsh pwd 'pwd')"
+printf 'pwd_output=%q\n' "$pwd_output" >&2
 [[ -n "$pwd_output" ]]
+printf '%s\n' 'gate.pwd=PASS'
 
 tmp="$(mktemp)"
 outfile="$(mktemp)"
@@ -36,12 +41,16 @@ trap 'rm -f "$tmp" "$outfile"' EXIT
 
 run_vsh overwrite "printf abc > $tmp" >/dev/null
 test "$(cat "$tmp")" = "abc"
+printf '%s\n' 'gate.overwrite=PASS'
 run_vsh append "echo def >> $tmp" >/dev/null
 test "$(cat "$tmp")" = "abcdef"
+printf '%s\n' 'gate.append=PASS'
 run_vsh input "cat < $tmp" > "$outfile"
 test "$(cat "$outfile")" = "abcdef"
+printf '%s\n' 'gate.input=PASS'
 run_vsh builtin-redirection "echo redirected > $tmp" >/dev/null
 test "$(cat "$tmp")" = "redirected"
+printf '%s\n' 'gate.builtin-redirection=PASS'
 
 quoted_script=$(cat <<'EOF'
 export VSH_TEST=ok
@@ -52,20 +61,41 @@ echo '$VSH_TEST'
 EOF
 )
 expected_quoted=$'ok\nok\nok\n$VSH_TEST'
-test "$(run_vsh quoting "$quoted_script")" = "$expected_quoted"
+quoted_output="$(run_vsh quoting "$quoted_script")"
+printf 'quoted_output=%q\n' "$quoted_output" >&2
+[[ "$quoted_output" == "$expected_quoted" ]]
+printf '%s\n' 'gate.quoting=PASS'
 
-test "$(run_vsh status $'false\necho $?')" = "1"
-test "$(run_vsh pid 'echo $$')" -gt 0
+status_output="$(run_vsh status $'false\necho $?')"
+printf 'status_output=%q\n' "$status_output" >&2
+[[ "$status_output" == "1" ]]
+printf '%s\n' 'gate.status=PASS'
 
-test -z "$(run_vsh not-found 'definitely-not-a-real-command' 127 2>/dev/null)"
+pid_output="$(run_vsh pid 'echo $$')"
+printf 'pid_output=%q\n' "$pid_output" >&2
+[[ "$pid_output" =~ ^[0-9]+$ ]]
+printf '%s\n' 'gate.pid=PASS'
+
+set +e
+run_vsh not-found 'definitely-not-a-real-command' 127 >/tmp/vsh-not-found.out 2>&1
+rc=$?
+set -e
+test "$rc" -eq 0
+test ! -s /tmp/vsh-not-found.out
+printf '%s\n' 'gate.not-found=PASS'
+
 test "$(run_vsh which 'which sh')" = "$(command -v sh)"
+printf '%s\n' 'gate.which=PASS'
 test -z "$(run_vsh true 'true')"
+printf '%s\n' 'gate.true=PASS'
 test -z "$(run_vsh false 'false' 1)"
+printf '%s\n' 'gate.false=PASS'
 
 set +e
 run_vsh unmatched-quote 'echo "unterminated' >/dev/null 2>&1
 rc=$?
 set -e
 test "$rc" -eq 2
+printf '%s\n' 'gate.unmatched-quote=PASS'
 
 printf '%s\n' 'vsh smoke: PASS'
