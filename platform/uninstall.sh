@@ -1,8 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -Eeuo pipefail
 
+PREFIX_VALUE="${PREFIX:-}"
+[[ "$PREFIX_VALUE" == /data/data/com.termux/files/usr ]] || {
+  printf '%s\n' 'VibeCode uninstall must run inside the official Termux userland.' >&2
+  exit 2
+}
+
 STATE="${HOME}/.vibecode"
-PREFIX_BIN="${PREFIX:-}/bin"
+PREFIX_BIN="$PREFIX_VALUE/bin"
 FILES=(
   "$PREFIX_BIN/tv"
   "$PREFIX_BIN/tune"
