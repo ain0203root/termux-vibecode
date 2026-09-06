@@ -50,7 +50,7 @@ grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$SELFTEST_FILE")
 export PREFIX="$real_prefix"
 printf '%s\n' 'checkpoint=self-test'
 
-printf 'printf installed-ok\\n' | bash "$TV" shell | grep -qx 'installed-ok'
+printf '%s\n' 'installed-ok' | bash "$TV" shell | grep -qx 'installed-ok'
 printf '%s\n' 'checkpoint=shell'
 
 set +e
