@@ -14,9 +14,14 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build tvsh with Termux package builder
         run: bash ci/build-termux-package.sh
+      - name: Verify package artifact
+        run: |
+          test -f dist/tvsh_*.deb
+          dpkg-deb --info dist/tvsh_*.deb >/dev/null
+          dpkg-deb --contents dist/tvsh_*.deb | grep -Eq '/usr/bin/vsh$'
       - name: Upload package
         uses: actions/upload-artifact@v6
         with:
           name: tvsh-x86_64-deb
-          path: '**/output/tvsh_*.deb'
+          path: dist/tvsh_*.deb
           if-no-files-found: error
