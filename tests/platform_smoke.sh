@@ -5,7 +5,8 @@ TEMP_HOME="$(mktemp -d)"
 TEMP_PREFIX="$TEMP_HOME/data/data/com.termux/files/usr"
 STATUS_FILE="$(mktemp)"
 ERROR_FILE="$(mktemp)"
-trap 'rm -rf "$TEMP_HOME"; rm -f "$STATUS_FILE" "$ERROR_FILE"' EXIT
+SELFTEST_FILE="$(mktemp)"
+trap 'rm -rf "$TEMP_HOME"; rm -f "$STATUS_FILE" "$ERROR_FILE" "$SELFTEST_FILE"' EXIT
 mkdir -p "$TEMP_PREFIX/bin"
 
 HOME="$TEMP_HOME" PREFIX="$TEMP_PREFIX" bash "$ROOT/platform/install.sh"
@@ -28,6 +29,9 @@ test -d "$workspace/src"
 test -d "$workspace/build"
 test -d "$workspace/cache"
 test -d "$workspace/tmp"
+
+tv self-test > "$SELFTEST_FILE"
+grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$SELFTEST_FILE")
 
 printf 'printf installed-ok\\n' | tv shell | grep -qx 'installed-ok'
 
