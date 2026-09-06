@@ -11,6 +11,7 @@ tv — Termux VibeCode control plane
 
   tv status
   tv doctor
+  tv self-test
   tv tune [detect|apply]
   tv shell
   tv workspace <name>
@@ -21,9 +22,60 @@ EOF
 }
 py(){ exec python3 "$STATE/tvd.py" "$@"; }
 
+self_test(){
+  local failed=0
+  printf '%s\n' 'VibeCode self-test'
+  for cmd in tv tune tv-ai; do
+    if [[ -x "$BIN/$cmd" ]]; then
+      printf 'check.%s=PASS\n' "$cmd"
+    else
+      printf 'check.%s=FAIL\n' "$cmd"
+      failed=1
+    fi
+  done
+  if [[ -x "$BIN/vsh" ]]; then
+    printf 'check.vsh=PASS\n'
+    if ! printf 'printf self-test-ok\\n' | "$BIN/vsh" | grep -Fqx 'self-test-ok'; then
+      printf '%s\n' 'check.vsh_exec=FAIL'
+      failed=1
+    else
+      printf '%s\n' 'check.vsh_exec=PASS'
+    fi
+  else
+    printf '%s\n' 'check.vsh=FAIL'
+    failed=1
+  fi
+  if [[ -f "$STATE/.install-marker" && -f "$STATE/version" ]]; then
+    printf '%s\n' 'check.install_state=PASS'
+  else
+    printf '%s\n' 'check.install_state=FAIL'
+    failed=1
+  fi
+  if [[ -d "$STATE/workspaces" && -w "$STATE/workspaces" ]]; then
+    printf '%s\n' 'check.workspace_store=PASS'
+  else
+    printf '%s\n' 'check.workspace_store=FAIL'
+    failed=1
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 "$STATE/tvd.py" doctor >/dev/null 2>&1; then
+      printf '%s\n' 'check.doctor=PASS'
+    else
+      printf '%s\n' 'check.doctor=FAIL'
+      failed=1
+    fi
+  else
+    printf '%s\n' 'check.python3=FAIL'
+    failed=1
+  fi
+  (( failed == 0 )) || return 1
+  printf '%s\n' 'SELF_TEST=PASS'
+}
+
 case "${1:-}" in
   status) py status ;;
   doctor) py doctor ;;
+  self-test) self_test ;;
   tune) exec "$BIN/tune" "${@:2}" ;;
   shell)
     [[ -x "$BIN/vsh" ]] || { printf '%s\n' 'vsh is not installed; run platform/install.sh first' >&2; exit 1; }
