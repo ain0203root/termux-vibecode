@@ -1,13 +1,25 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -Eeuo pipefail
 
-PREFIX_VALUE="${PREFIX:-}"
-[[ "$PREFIX_VALUE" == /data/data/com.termux/files/usr ]] || {
-  printf '%s\n' 'VibeCode uninstall must run inside the official Termux userland.' >&2
+STATE="${HOME}/.vibecode"
+MARKER="$STATE/.install-marker"
+[[ -f "$MARKER" ]] || {
+  printf '%s\n' 'VibeCode install marker not found; refusing to modify the Termux prefix.' >&2
   exit 2
 }
 
-STATE="${HOME}/.vibecode"
+PREFIX_VALUE="${PREFIX:-}"
+[[ -n "$PREFIX_VALUE" && "$PREFIX_VALUE" == */files/usr ]] || {
+  printf '%s\n' 'VibeCode uninstall must run inside a registered Termux-style prefix.' >&2
+  exit 2
+}
+
+recorded_prefix="$(awk -F= '$1 == "prefix" { print substr($0, index($0, "=") + 1); exit }' "$MARKER")"
+[[ "$recorded_prefix" == "$PREFIX_VALUE" ]] || {
+  printf '%s\n' 'Current PREFIX does not match the VibeCode installation marker; refusing to modify files.' >&2
+  exit 2
+}
+
 PREFIX_BIN="$PREFIX_VALUE/bin"
 FILES=(
   "$PREFIX_BIN/tv"
@@ -24,9 +36,7 @@ for file in "${FILES[@]}"; do
   fi
 done
 
-if [[ -f "$STATE/.install-marker" ]]; then
-  rm -f -- "$STATE/.install-marker"
-fi
+rm -f -- "$MARKER"
 
 if [[ -f "$HOME/.bashrc" ]]; then
   tmp=$(mktemp)
