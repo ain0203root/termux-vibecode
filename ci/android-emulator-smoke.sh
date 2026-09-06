@@ -4,7 +4,7 @@ set -Eeuo pipefail
 PKG=com.termux
 REMOTE_HOME=/data/data/$PKG/files/home
 REMOTE_TMP=/data/local/tmp/vibecode-smoke.sh
-RESULT=$REMOTE_HOME/vibecode-emulator-result
+REMOTE_SRC=/data/local/tmp/vibecode-src/native/vsh
 
 adb wait-for-device
 adb shell 'getprop sys.boot_completed' | grep -q '^1$'
@@ -57,8 +57,9 @@ printf 'SMOKE=PASS\n'
 EOS
 
 adb push /tmp/vibecode-smoke.sh "$REMOTE_TMP" >/dev/null
-adb push native/vsh/vsh.c /data/local/tmp/vibecode-src/native/vsh/vsh.c >/dev/null
-adb push native/vsh/Makefile /data/local/tmp/vibecode-src/native/vsh/Makefile >/dev/null
+adb shell mkdir -p "$REMOTE_SRC"
+adb push native/vsh/vsh.c "$REMOTE_SRC/vsh.c" >/dev/null
+adb push native/vsh/Makefile "$REMOTE_SRC/Makefile" >/dev/null
 adb shell chmod 755 "$REMOTE_TMP"
 adb shell run-as "$PKG" mkdir -p files/home/.shortcuts
 adb shell run-as "$PKG" cp "$REMOTE_TMP" "files/home/.shortcuts/vibecode-smoke.sh"
