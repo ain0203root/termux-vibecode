@@ -8,20 +8,32 @@ on:
 
 jobs:
   tvsh:
+    name: tvsh (${{ matrix.arch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v6
       - name: Build tvsh with Termux package builder
+        env:
+          TERMUX_ARCH: ${{ matrix.arch }}
         run: bash ci/build-termux-package.sh
       - name: Verify package artifact
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
-          test -f dist/tvsh_*.deb
-          dpkg-deb --info dist/tvsh_*.deb >/dev/null
-          dpkg-deb --contents dist/tvsh_*.deb | grep -Eq '/usr/bin/vsh$'
+          shopt -s nullglob
+          packages=(dist-${ARCH}/tvsh_*.deb)
+          test "${#packages[@]}" -eq 1
+          dpkg-deb --info "${packages[0]}" >/dev/null
+          dpkg-deb --contents "${packages[0]}" | grep -Eq '/usr/bin/vsh$'
+          dpkg-deb --contents "${packages[0]}" | grep -Eq '/usr/share/doc/tvsh/copyright$'
       - name: Upload package
         uses: actions/upload-artifact@v6
         with:
-          name: tvsh-x86_64-deb
-          path: dist/tvsh_*.deb
+          name: tvsh-${{ matrix.arch }}-deb
+          path: dist-${{ matrix.arch }}/tvsh_*.deb
           if-no-files-found: error
