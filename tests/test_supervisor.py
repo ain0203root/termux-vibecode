@@ -118,3 +118,51 @@ def test_pid_record_does_not_accept_reused_process_identity(tmp_path):
     )
     assert supervisor.running("probe") is None
     assert not path.exists()
+
+
+def test_supervise_uses_exponential_backoff_after_crash_loop(tmp_path):
+    supervisor = load_module()
+    supervisor.HOME = tmp_path / ".vibecode"
+    supervisor.CONF = supervisor.HOME / "services.conf"
+    supervisor.RUN = supervisor.HOME / "run"
+    supervisor.LOG = supervisor.HOME / "logs" / "services"
+    supervisor.CONF.parent.mkdir(parents=True)
+    supervisor.CONF.write_text("probe=echo never\n", encoding="utf-8")
+
+    clock = [0.0]
+    starts = []
+
+    class StopLoop(Exception):
+        pass
+
+    service = supervisor.load()[0]
+
+    def fake_monotonic():
+        return clock[0]
+
+    def fake_start(current):
+        assert current == service
+        starts.append(clock[0])
+        return 123
+
+    def fake_running(name):
+        assert name == service.name
+        return None
+
+    def fake_sleep(delay):
+        assert delay == 0.5
+        clock[0] += delay
+        if len(starts) >= 4:
+            raise StopLoop
+
+    supervisor.time.monotonic = fake_monotonic
+    supervisor.start = fake_start
+    supervisor.running = fake_running
+    supervisor.time.sleep = fake_sleep
+
+    try:
+        supervisor.supervise()
+    except StopLoop:
+        pass
+
+    assert starts == [0.0, 1.0, 3.0, 7.0]
