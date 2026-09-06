@@ -183,11 +183,13 @@ def supervise() -> None:
     next_start = {s.name: 0.0 for s in services}
     for service in services:
         start(service)
+        next_start[service.name] = time.monotonic() + service.delay
     while True:
         now = time.monotonic()
         for service in services:
             if running(service.name) is not None:
                 backoff[service.name] = service.delay
+                next_start[service.name] = now + service.delay
                 continue
             if not service.restart or now < next_start[service.name]:
                 continue
