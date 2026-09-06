@@ -21,7 +21,7 @@ run_vsh() {
 }
 
 pipeline_output="$(run_vsh pipeline 'printf hello | tr a-z A-Z')"
-printf 'pipeline_output=%q\n' "$pipeline_output"
+printf 'pipeline_output=%q\n' "$pipeline_output" >&2
 [[ "$pipeline_output" == "HELLO" ]]
 printf '%s\n' 'gate.pipeline=PASS'
 
@@ -37,7 +37,8 @@ printf '%s\n' 'gate.pwd=PASS'
 
 tmp="$(mktemp)"
 outfile="$(mktemp)"
-trap 'rm -f "$tmp" "$outfile"' EXIT
+notfound_file="$(mktemp)"
+trap 'rm -f "$tmp" "$outfile" "$notfound_file"' EXIT
 
 run_vsh overwrite "printf abc > $tmp" >/dev/null
 test "$(cat "$tmp")" = "abc"
@@ -77,11 +78,11 @@ printf 'pid_output=%q\n' "$pid_output" >&2
 printf '%s\n' 'gate.pid=PASS'
 
 set +e
-run_vsh not-found 'definitely-not-a-real-command' 127 >/tmp/vsh-not-found.out 2>&1
+run_vsh not-found 'definitely-not-a-real-command' 127 >"$notfound_file" 2>&1
 rc=$?
 set -e
 test "$rc" -eq 0
-test ! -s /tmp/vsh-not-found.out
+grep -Fq 'definitely-not-a-real-command:' "$notfound_file"
 printf '%s\n' 'gate.not-found=PASS'
 
 test "$(run_vsh which 'which sh')" = "$(command -v sh)"
