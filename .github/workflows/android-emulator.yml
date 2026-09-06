@@ -14,6 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -36,9 +41,13 @@ jobs:
           emulator-boot-timeout: 420
           script: |
             export TERMUX_APK="$RUNNER_TEMP/termux-app.apk"
-            APK_URL='https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3%2Bapt-android-7-github-debug_x86_64.apk'
-            curl --fail --location --retry 4 --retry-delay 2 --retry-all-errors \
-              --output "$TERMUX_APK" \
-              -- "$APK_URL"
+            python3 - <<'PY'
+            from urllib.request import urlopen, Request
+            url = 'https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_x86_64.apk'
+            req = Request(url, headers={'User-Agent': 'termux-vibecode-ci'})
+            with urlopen(req, timeout=120) as r, open('/tmp/termux-app.apk', 'wb') as f:
+                f.write(r.read())
+            PY
+            cp /tmp/termux-app.apk "$TERMUX_APK"
             test -s "$TERMUX_APK"
             bash ci/android-emulator-smoke.sh
