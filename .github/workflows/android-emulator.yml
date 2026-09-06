@@ -36,7 +36,9 @@ jobs:
           emulator-boot-timeout: 420
           script: |
             export TERMUX_APK="$RUNNER_TEMP/termux-app.apk"
-            curl -fL --retry 3 --retry-all-errors \
-              -o "$TERMUX_APK" \
-              "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_x86_64.apk"
+            APK_URL='https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3%2Bapt-android-7-github-debug_x86_64.apk'
+            curl --fail --location --retry 4 --retry-delay 2 --retry-all-errors \
+              --output "$TERMUX_APK" \
+              -- "$APK_URL"
+            test -s "$TERMUX_APK"
             bash ci/android-emulator-smoke.sh
