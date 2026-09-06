@@ -75,7 +75,7 @@ static int read_line(char *buf, size_t cap) {
         if (isprint(c) && n + 1 < cap) {
             memmove(buf + cursor + 1, buf + cursor, n - cursor);
             buf[cursor++] = (char)c; n++; buf[n] = 0;
-            printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout;
+            printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout);
         }
     }
 }
