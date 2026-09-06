@@ -18,9 +18,9 @@ typedef struct {
     char *text;
 } Token;
 
-static char *history[HIST_MAX];
-static size_t history_count;
-static size_t history_pos;
+static char *hist[HIST_MAX];
+static size_t hist_n;
+static size_t hist_pos;
 static struct termios saved_tty;
 static int tty_ready;
 static int last_status;
@@ -34,8 +34,8 @@ static void restore_tty(void) {
     if (tty_ready) tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tty);
 }
 
-static void free_history(void) {
-    for (size_t i = 0; i < history_count; ++i) free(history[i]);
+static void cleanup_history(void) {
+    for (size_t i = 0; i < hist_n; ++i) free(hist[i]);
 }
 
 static void setup_tty(void) {
@@ -43,27 +43,27 @@ static void setup_tty(void) {
     if (tcgetattr(STDIN_FILENO, &saved_tty) != 0) return;
     tty_ready = 1;
     atexit(restore_tty);
-    atexit(free_history);
+    atexit(cleanup_history);
 }
 
-static void add_history(const char *line) {
-    if (!*line || (history_count && strcmp(history[history_count - 1], line) == 0)) {
-        history_pos = history_count;
+static void add_history(const char *s) {
+    if (!*s || (hist_n && strcmp(hist[hist_n - 1], s) == 0)) {
+        hist_pos = hist_n;
         return;
     }
-    if (history_count == HIST_MAX) {
-        free(history[0]);
-        memmove(history, history + 1, sizeof(history[0]) * (HIST_MAX - 1));
-        history_count--;
+    if (hist_n == HIST_MAX) {
+        free(hist[0]);
+        memmove(hist, hist + 1, sizeof(hist[0]) * (HIST_MAX - 1));
+        --hist_n;
     }
-    history[history_count] = strdup(line);
-    if (!history[history_count]) die_oom();
-    history_count++;
-    history_pos = history_count;
+    hist[hist_n] = strdup(s);
+    if (!hist[hist_n]) die_oom();
+    ++hist_n;
+    hist_pos = hist_n;
 }
 
-static void redraw(const char *buf, size_t length, size_t cursor) {
-    printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, length - cursor);
+static void redraw_line(const char *buf, size_t n, size_t cursor) {
+    printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor);
     fflush(stdout);
 }
 
@@ -72,18 +72,18 @@ static int read_line(char *buf, size_t cap) {
         return fgets(buf, (int)cap, stdin) ? 0 : -1;
     }
 
-    struct termios raw = saved_tty;
-    raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);
-    raw.c_cc[VMIN] = 1;
-    raw.c_cc[VTIME] = 0;
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) return -1;
-
-    size_t length = 0;
-    size_t cursor = 0;
-    history_pos = history_count;
-    buf[0] = 0;
     printf("vsh> ");
     fflush(stdout);
+    struct termios t = saved_tty;
+    t.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+    t.c_cc[VMIN] = 1;
+    t.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t) != 0) return -1;
+
+    size_t n = 0;
+    size_t cursor = 0;
+    hist_pos = hist_n;
+    memset(buf, 0, cap);
 
     for (;;) {
         unsigned char c = 0;
@@ -92,10 +92,10 @@ static int read_line(char *buf, size_t cap) {
             return -1;
         }
         if (c == '\n' || c == '\r') {
-            buf[length] = 0;
+            buf[n] = 0;
             putchar('\n');
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tty);
-            return (int)length;
+            return (int)n;
         }
         if (c == 3) {
             puts("^C");
@@ -103,58 +103,69 @@ static int read_line(char *buf, size_t cap) {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tty);
             return 0;
         }
-        if (c == 4 && length == 0) {
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tty);
-            return -1;
+        if (c == 4) {
+            if (n == 0) {
+                fputs("^D", stdout);
+                fflush(stdout);
+                tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_tty);
+                return -1;
+            }
+            continue;
         }
-        if ((c == 8 || c == 127) && cursor > 0) {
-            memmove(buf + cursor - 1, buf + cursor, length - cursor);
-            length--;
-            cursor--;
-            buf[length] = 0;
-            redraw(buf, length, cursor);
+        if (c == 127 || c == 8) {
+            if (cursor > 0) {
+                memmove(buf + cursor - 1, buf + cursor, n - cursor);
+                --n;
+                --cursor;
+                buf[n] = 0;
+                redraw_line(buf, n, cursor);
+            }
             continue;
         }
         if (c == 27) {
             unsigned char seq[2] = {0, 0};
             if (read(STDIN_FILENO, seq, 2) == 2 && seq[0] == '[') {
-                if (seq[1] == 'C' && cursor < length) cursor++;
-                else if (seq[1] == 'D' && cursor > 0) cursor--;
-                else if (seq[1] == 'A' && history_pos > 0) {
-                    history_pos--;
-                    strncpy(buf, history[history_pos], cap - 1);
+                if (seq[1] == 'C' && cursor < n) {
+                    ++cursor;
+                    redraw_line(buf, n, cursor);
+                } else if (seq[1] == 'D' && cursor > 0) {
+                    --cursor;
+                    redraw_line(buf, n, cursor);
+                } else if (seq[1] == 'A' && hist_n > 0 && hist_pos > 0) {
+                    --hist_pos;
+                    strncpy(buf, hist[hist_pos], cap - 1);
                     buf[cap - 1] = 0;
-                    length = strlen(buf);
-                    cursor = length;
-                } else if (seq[1] == 'B') {
-                    if (history_pos + 1 < history_count) {
-                        history_pos++;
-                        strncpy(buf, history[history_pos], cap - 1);
+                    n = strlen(buf);
+                    cursor = n;
+                    redraw_line(buf, n, cursor);
+                } else if (seq[1] == 'B' && hist_n > 0) {
+                    if (hist_pos + 1 < hist_n) {
+                        ++hist_pos;
+                        strncpy(buf, hist[hist_pos], cap - 1);
                         buf[cap - 1] = 0;
-                        length = strlen(buf);
                     } else {
-                        history_pos = history_count;
+                        hist_pos = hist_n;
                         buf[0] = 0;
-                        length = 0;
                     }
-                    cursor = length;
+                    n = strlen(buf);
+                    cursor = n;
+                    redraw_line(buf, n, cursor);
                 }
-                redraw(buf, length, cursor);
             }
             continue;
         }
-        if (isprint(c) && length + 1 < cap) {
-            memmove(buf + cursor + 1, buf + cursor, length - cursor);
+        if (isprint(c) && n + 1 < cap) {
+            memmove(buf + cursor + 1, buf + cursor, n - cursor);
             buf[cursor++] = (char)c;
-            length++;
-            buf[length] = 0;
-            redraw(buf, length, cursor);
+            ++n;
+            buf[n] = 0;
+            redraw_line(buf, n, cursor);
         }
     }
 }
 
-static void append_bytes(char **dst, size_t *length, size_t *cap, const char *src, size_t count) {
-    while (*length + count + 1 > *cap) {
+static void append_bytes(char **dst, size_t *n, size_t *cap, const char *src, size_t len) {
+    while (*n + len + 1 > *cap) {
         *cap *= 2;
         char *grown = realloc(*dst, *cap);
         if (!grown) {
@@ -163,9 +174,9 @@ static void append_bytes(char **dst, size_t *length, size_t *cap, const char *sr
         }
         *dst = grown;
     }
-    memcpy(*dst + *length, src, count);
-    *length += count;
-    (*dst)[*length] = 0;
+    memcpy(*dst + *n, src, len);
+    *n += len;
+    (*dst)[*n] = 0;
 }
 
 static int valid_var_start(unsigned char c) {
@@ -176,18 +187,19 @@ static int valid_var_char(unsigned char c) {
     return isalnum(c) || c == '_';
 }
 
-static void append_var(char **dst, size_t *length, size_t *cap, const char *name, size_t name_len) {
-    char name_buf[256];
-    if (name_len >= sizeof(name_buf)) return;
-    memcpy(name_buf, name, name_len);
-    name_buf[name_len] = 0;
-    const char *value = getenv(name_buf);
+static void append_var(char **dst, size_t *length, size_t *cap, const char *name, size_t len) {
+    char variable[256];
+    if (len >= sizeof(variable)) return;
+    memcpy(variable, name, len);
+    variable[len] = 0;
+    const char *value = getenv(variable);
     if (!value) value = "";
     append_bytes(dst, length, cap, value, strlen(value));
 }
 
 static void append_expansion(char **dst, size_t *length, size_t *cap, const char *src, size_t *pos) {
     size_t i = *pos;
+    if (src[i] != '$') return;
     if (src[i + 1] == '$') {
         char pid[32];
         snprintf(pid, sizeof(pid), "%ld", (long)getpid());
@@ -205,7 +217,7 @@ static void append_expansion(char **dst, size_t *length, size_t *cap, const char
     if (src[i + 1] == '{') {
         size_t start = i + 2;
         size_t end = start;
-        while (valid_var_char((unsigned char)src[end])) end++;
+        while (valid_var_char((unsigned char)src[end])) ++end;
         if (src[end] == '}') {
             append_var(dst, length, cap, src + start, end - start);
             *pos = end + 1;
@@ -214,7 +226,7 @@ static void append_expansion(char **dst, size_t *length, size_t *cap, const char
     } else if (valid_var_start((unsigned char)src[i + 1])) {
         size_t start = i + 1;
         size_t end = start;
-        while (valid_var_char((unsigned char)src[end])) end++;
+        while (valid_var_char((unsigned char)src[end])) ++end;
         append_var(dst, length, cap, src + start, end - start);
         *pos = end;
         return;
@@ -230,22 +242,22 @@ static char *decode_word(const char *src) {
     if (!out) die_oom();
     char quote = 0;
 
-    for (size_t i = 0; src[i];) {
+    for (size_t i = 0; src[i]; ) {
         unsigned char c = (unsigned char)src[i];
         if (quote == '\'') {
             if (c == '\'') {
                 quote = 0;
-                i++;
+                ++i;
                 continue;
             }
             append_bytes(&out, &length, &cap, (const char *)&c, 1);
-            i++;
+            ++i;
             continue;
         }
         if (quote == '"') {
             if (c == '"') {
                 quote = 0;
-                i++;
+                ++i;
                 continue;
             }
             if (c == '\\' && src[i + 1]) {
@@ -258,12 +270,12 @@ static char *decode_word(const char *src) {
                 continue;
             }
             append_bytes(&out, &length, &cap, (const char *)&c, 1);
-            i++;
+            ++i;
             continue;
         }
         if (c == '\'' || c == '"') {
             quote = (char)c;
-            i++;
+            ++i;
             continue;
         }
         if (c == '\\' && src[i + 1]) {
@@ -276,7 +288,7 @@ static char *decode_word(const char *src) {
             continue;
         }
         append_bytes(&out, &length, &cap, (const char *)&c, 1);
-        i++;
+        ++i;
     }
     if (quote != 0) {
         free(out);
@@ -290,7 +302,7 @@ static int tokenize(char *line, Token *tokens) {
     size_t i = 0;
     int count = 0;
     while (line[i] && count < MAX_TOK - 1) {
-        while (isspace((unsigned char)line[i])) i++;
+        while (isspace((unsigned char)line[i])) ++i;
         if (!line[i]) break;
         if (strchr("|<>", line[i])) {
             if (line[i] == '>' && line[i + 1] == '>') {
@@ -299,10 +311,10 @@ static int tokenize(char *line, Token *tokens) {
             } else {
                 char op[2] = {line[i], 0};
                 tokens[count].text = strdup(op);
-                i++;
+                ++i;
             }
             if (!tokens[count].text) die_oom();
-            count++;
+            ++count;
             continue;
         }
         size_t start = i;
@@ -311,18 +323,18 @@ static int tokenize(char *line, Token *tokens) {
             unsigned char c = (unsigned char)line[i];
             if (quote == '\'') {
                 if (c == '\'') quote = 0;
-                i++;
+                ++i;
                 continue;
             }
             if (quote == '"') {
                 if (c == '"') quote = 0;
-                else if (c == '\\' && line[i + 1]) i++;
-                i++;
+                else if (c == '\\' && line[i + 1]) ++i;
+                ++i;
                 continue;
             }
             if (c == '\'' || c == '"') {
                 quote = (char)c;
-                i++;
+                ++i;
                 continue;
             }
             if (c == '\\' && line[i + 1]) {
@@ -330,7 +342,7 @@ static int tokenize(char *line, Token *tokens) {
                 continue;
             }
             if (isspace(c) || strchr("|<>", c)) break;
-            i++;
+            ++i;
         }
         if (quote != 0) {
             fprintf(stderr, "vsh: unmatched quote\n");
@@ -344,7 +356,7 @@ static int tokenize(char *line, Token *tokens) {
         tokens[count].text = decode_word(raw);
         free(raw);
         if (!tokens[count].text) return -1;
-        count++;
+        ++count;
     }
     tokens[count].text = NULL;
     return count;
@@ -448,7 +460,7 @@ static int builtin(char **argv) {
         return rc;
     }
     if (!strcmp(argv[0], "history")) {
-        for (size_t i = 0; i < history_count; ++i) printf("%4zu  %s\n", i + 1, history[i]);
+        for (size_t i = 0; i < hist_n; ++i) printf("%4zu  %s\n", i + 1, hist[i]);
         return 0;
     }
     if (!strcmp(argv[0], "which")) {
@@ -467,9 +479,7 @@ static int builtin(char **argv) {
 
 static int build_argv(Token *tokens, int start, int end, char **argv, int *argc) {
     int n = 0;
-    for (int i = start; i < end && n < MAX_TOK - 1; ++i) {
-        argv[n++] = tokens[i].text;
-    }
+    for (int i = start; i < end && n < MAX_TOK - 1; ++i) argv[n++] = tokens[i].text;
     argv[n] = NULL;
     *argc = n;
     return n > 0 ? 0 : 1;
@@ -487,7 +497,7 @@ static int apply_redirections(char **argv, int *argc) {
                 return 1;
             }
             close(fd);
-            i++;
+            ++i;
             continue;
         }
         if (!strcmp(argv[i], "<") && i + 1 < *argc) {
@@ -498,7 +508,7 @@ static int apply_redirections(char **argv, int *argc) {
                 return 1;
             }
             close(fd);
-            i++;
+            ++i;
             continue;
         }
         argv[out++] = argv[i];
@@ -517,7 +527,6 @@ static int execute_segment(Token *tokens, int start, int end, int in_fd, int out
     int argc = 0;
     if (build_argv(tokens, start, end, argv, &argc) != 0) return 2;
     if (apply_redirections(argv, &argc) != 0) return 1;
-
     if (in_fd != STDIN_FILENO && dup2(in_fd, STDIN_FILENO) < 0) _exit(1);
     if (out_fd != STDOUT_FILENO && dup2(out_fd, STDOUT_FILENO) < 0) _exit(1);
 
@@ -542,7 +551,7 @@ static int execute_tokens(Token *tokens, int count) {
             }
             starts[commands] = start;
             ends[commands] = i;
-            commands++;
+            ++commands;
             start = i + 1;
         }
     }
