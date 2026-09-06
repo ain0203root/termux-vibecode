@@ -21,9 +21,9 @@ run_vsh() {
   printf '%s\n' "$output"
 }
 
-test "$(run_vsh pipeline $'printf hello | tr a-z A-Z')" = "HELLO"
-test "$(run_vsh echo $'echo VIBECODE_OK')" = "VIBECODE_OK"
-test -n "$(run_vsh pwd $'pwd')"
+test "$(run_vsh pipeline 'printf hello | tr a-z A-Z')" = "HELLO"
+test "$(run_vsh echo 'echo VIBECODE_OK')" = "VIBECODE_OK"
+test -n "$(run_vsh pwd 'pwd')"
 
 tmp="$(mktemp)"
 outfile="$(mktemp)"
@@ -38,14 +38,24 @@ test "$(cat "$outfile")" = "abcdef"
 run_vsh builtin-redirection "echo redirected > $tmp" >/dev/null
 test "$(cat "$tmp")" = "redirected"
 
-test "$(run_vsh quoting $'export VSH_TEST=ok\necho $VSH_TEST\necho ${VSH_TEST}\necho \"$VSH_TEST\"\necho '\''$VSH_TEST'\'')" = $'ok\nok\nok\n$VSH_TEST'
-test "$(run_vsh status $'false\necho $?')" = "1"
-test "$(run_vsh pid $'echo $$')" -gt 0
+quoted_script=$(cat <<'EOF'
+export VSH_TEST=ok
+echo $VSH_TEST
+echo ${VSH_TEST}
+echo "$VSH_TEST"
+echo '$VSH_TEST'
+EOF
+)
+expected_quoted=$'ok\nok\nok\n$VSH_TEST'
+test "$(run_vsh quoting "$quoted_script")" = "$expected_quoted"
 
-test "$(run_vsh not-found $'definitely-not-a-real-command' 127 2>/dev/null)" = ""
-test "$(run_vsh which $'which sh')" = "$(command -v sh)"
-test "$(run_vsh true $'true')" = ""
-test "$(run_vsh false $'false' 1)" = ""
+test "$(run_vsh status $'false\necho $?')" = "1"
+test "$(run_vsh pid 'echo $$')" -gt 0
+
+test -z "$(run_vsh not-found 'definitely-not-a-real-command' 127 2>/dev/null)"
+test "$(run_vsh which 'which sh')" = "$(command -v sh)"
+test -z "$(run_vsh true 'true')"
+test -z "$(run_vsh false 'false' 1)"
 
 set +e
 run_vsh unmatched-quote 'echo "unterminated' >/dev/null 2>&1
