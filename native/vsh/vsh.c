@@ -75,7 +75,7 @@ static int read_line(char *buf, size_t cap) {
         if (isprint(c) && n + 1 < cap) {
             memmove(buf + cursor + 1, buf + cursor, n - cursor);
             buf[cursor++] = (char)c; n++; buf[n] = 0;
-            printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout);
+            printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout;
         }
     }
 }
@@ -175,7 +175,8 @@ static int builtin(char **a) {
     if (!strcmp(a[0], "exit")) exit(0);
     if (!strcmp(a[0], "cd")) {
         const char *d = a[1] ? a[1] : getenv("HOME");
-        if (chdir(d) < 0) perror("cd"); return 1;
+        if (chdir(d) < 0) perror("cd");
+        return 1;
     }
     if (!strcmp(a[0], "pwd")) {
         char b[4096]; if (getcwd(b, sizeof(b))) puts(b); return 1;
@@ -193,14 +194,18 @@ static int builtin(char **a) {
     }
     if (!strcmp(a[0], "unset")) { if (a[1]) unsetenv(a[1]); return 1; }
     if (!strcmp(a[0], "history")) {
-        for (size_t i = 0; i < hist_n; i++) printf("%4zu  %s\n", i + 1, hist[i]); return 1;
+        for (size_t i = 0; i < hist_n; i++) {
+            printf("%4zu  %s\n", i + 1, hist[i]);
+        }
+        return 1;
     }
     if (!strcmp(a[0], "which")) {
         if (!a[1]) return 1;
         char *path = getenv("PATH"); if (!path) return 1;
         char *copy = strdup(path); if (!copy) return 1;
         for (char *p = copy, *save = NULL; ; p = NULL) {
-            char *dir = strtok_r(p, ":", &save); if (!dir) break;
+            char *dir = strtok_r(p, ":", &save);
+            if (!dir) break;
             char candidate[4096]; snprintf(candidate, sizeof(candidate), "%s/%s", *dir ? dir : ".", a[1]);
             if (access(candidate, X_OK) == 0) { puts(candidate); free(copy); return 1; }
         }
