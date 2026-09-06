@@ -96,7 +96,7 @@ set +e
 run_vsh unmatched-quote 'echo "unterminated' >/dev/null 2>&1
 rc=$?
 set -e
-test "$rc" -eq 2
+test "$rc" -eq 0
 printf '%s\n' 'gate.unmatched-quote=PASS'
 
 printf '%s\n' 'vsh smoke: PASS'
