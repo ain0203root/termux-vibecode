@@ -33,8 +33,8 @@ jobs:
           packages=(dist-${ARCH}/tvsh_*.deb)
           test "${#packages[@]}" -eq 1
           dpkg-deb --info "${packages[0]}" >/dev/null
-          dpkg-deb --contents "${packages[0]}" | grep -Eq '/usr/bin/vsh$'
-          dpkg-deb --contents "${packages[0]}" | grep -Eq '/usr/share/doc/tvsh/copyright$'
+          dpkg-deb --contents "${packages[0]}" | grep -Eq 'data/data/com\.termux/files/usr/bin/vsh$'
+          dpkg-deb --contents "${packages[0]}" | grep -Eq 'data/data/com\.termux/files/usr/share/doc/tvsh/copyright$'
       - name: Upload package
         uses: actions/upload-artifact@v6
         with:
