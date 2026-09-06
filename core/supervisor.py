@@ -14,6 +14,7 @@ CONF = HOME / "services.conf"
 RUN = HOME / "run"
 LOG = HOME / "logs" / "services"
 
+
 @dataclass(frozen=True)
 class Service:
     name: str
@@ -32,8 +33,9 @@ def load() -> list[Service]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         name, command = line.split("=", 1)
-        if name.strip() and command.strip():
-            out.append(Service(name.strip(), command.strip()))
+        name, command = name.strip(), command.strip()
+        if name and command:
+            out.append(Service(name, command))
     return out
 
 
@@ -41,37 +43,77 @@ def path_for(name: str) -> Path:
     return RUN / f"{name}.pid"
 
 
+def _proc_starttime(pid: int) -> int | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        close = stat.rfind(")")
+        if close < 0:
+            return None
+        fields = stat[close + 2 :].split()
+        return int(fields[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _read_record(path: Path) -> tuple[int, int | None] | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        if raw.startswith("{"):
+            data = json.loads(raw)
+            return int(data["pid"]), int(data["starttime"]) if data.get("starttime") is not None else None
+        return int(raw), None
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+
+
 def running(name: str) -> int | None:
     path = path_for(name)
-    if not path.exists():
-        return None
-    try:
-        pid = int(path.read_text(encoding="utf-8").strip())
-        os.kill(pid, 0)
-        return pid
-    except (ValueError, ProcessLookupError, PermissionError):
+    record = _read_record(path) if path.exists() else None
+    if record is None:
         path.unlink(missing_ok=True)
         return None
+    pid, expected_start = record
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        path.unlink(missing_ok=True)
+        return None
+    if expected_start is not None and _proc_starttime(pid) != expected_start:
+        path.unlink(missing_ok=True)
+        return None
+    return pid
+
+
+def _write_record(service: Service, pid: int) -> None:
+    RUN.mkdir(parents=True, exist_ok=True)
+    path = path_for(service.name)
+    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    record = {
+        "pid": pid,
+        "starttime": _proc_starttime(pid),
+        "command": service.command,
+    }
+    tmp.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def start(service: Service) -> int:
     existing = running(service.name)
     if existing:
         return existing
-    RUN.mkdir(parents=True, exist_ok=True)
     log_dir = LOG / service.name
     log_dir.mkdir(parents=True, exist_ok=True)
-    log = (log_dir / "stdout.log").open("ab")
-    proc = subprocess.Popen(
-        service.command,
-        shell=True,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        close_fds=True,
-    )
-    path_for(service.name).write_text(str(proc.pid), encoding="utf-8")
-    (log_dir / "started_at").write_text(str(time.time()), encoding="utf-8")
+    with (log_dir / "stdout.log").open("ab") as log:
+        proc = subprocess.Popen(
+            service.command,
+            shell=True,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            close_fds=True,
+        )
+    _write_record(service, proc.pid)
+    (log_dir / "started_at").write_text(str(time.time()), encoding="ascii")
     return proc.pid
 
 
@@ -89,7 +131,8 @@ def stop(service: Service) -> None:
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline and running(service.name) is not None:
         time.sleep(0.05)
-    if running(service.name) is not None:
+    pid = running(service.name)
+    if pid is not None:
         try:
             os.killpg(pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
@@ -125,12 +168,16 @@ def supervise() -> None:
 
 if __name__ == "__main__":
     import sys
+
     op = sys.argv[1] if len(sys.argv) > 1 else "status"
     services = {s.name: s for s in load()}
     if op == "status":
         print(json.dumps(snapshot(), indent=2))
     elif op in {"start", "stop", "restart"} and len(sys.argv) > 2:
-        service = services[sys.argv[2]]
+        name = sys.argv[2]
+        if name not in services:
+            raise SystemExit(f"unknown service: {name}")
+        service = services[name]
         if op == "start":
             print(start(service))
         elif op == "stop":
