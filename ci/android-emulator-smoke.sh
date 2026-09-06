@@ -71,6 +71,10 @@ test -L "$PREFIX/bin/vsh"
 test "$(tv version)" = '0.1.0'
 printf 'install=PASS\n'
 
+tv self-test > "$STATE/android-self-test.txt"
+grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$STATE/android-self-test.txt")
+printf 'self_test=PASS\n'
+
 workspace=$(tv workspace android-smoke)
 for part in src build cache tmp; do test -d "$workspace/$part"; done
 printf 'workspace=PASS\n'
