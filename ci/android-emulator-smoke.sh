@@ -9,6 +9,7 @@ TERMUX_PATH=$TERMUX_PREFIX/bin:$TERMUX_PREFIX/bin/applets:/system/bin:/system/xb
 TERMUX_APK="${TERMUX_APK:-${RUNNER_TEMP:-/tmp}/termux-app.apk}"
 REMOTE_TMP=/data/local/tmp/vibecode-smoke.sh
 REMOTE_REPO=/data/local/tmp/vibecode-repo
+TERMUX_REPO=$TERMUX_HOME/vibecode-repo
 REMOTE_RESULT=$TERMUX_HOME/vibecode-emulator-result
 TERMUX_SCRIPT=$TERMUX_HOME/vibecode-smoke.sh
 
@@ -46,7 +47,7 @@ export HOME=/data/data/com.termux/files/home
 export PREFIX=/data/data/com.termux/files/usr
 export TMPDIR=$PREFIX/tmp
 export PATH=$PREFIX/bin:$PREFIX/bin/applets:/system/bin:/system/xbin
-REPO=/data/local/tmp/vibecode-repo
+REPO=$HOME/vibecode-repo
 STATE="$HOME/.vibecode"
 RESULT="$HOME/vibecode-emulator-result"
 exec >"$RESULT" 2>&1
@@ -79,7 +80,7 @@ workspace=$(tv workspace android-smoke)
 for part in src build cache tmp; do test -d "$workspace/$part"; done
 printf 'workspace=PASS\n'
 
-printf 'printf shell-ok\\n' | tv shell | grep -qx 'shell-ok'
+printf '%s\n' 'echo shell-ok' | tv shell | grep -qx 'shell-ok'
 printf 'vsh_shell=PASS\n'
 
 tv status > "$STATE/android-status.json"
@@ -119,6 +120,8 @@ adb push /tmp/vibecode-smoke.sh "$REMOTE_TMP" >/dev/null
 adb shell chmod 755 "$REMOTE_TMP"
 adb shell run-as "$PKG" cp "$REMOTE_TMP" "$TERMUX_SCRIPT"
 adb shell run-as "$PKG" chmod 755 "$TERMUX_SCRIPT"
+adb shell run-as "$PKG" rm -rf "$TERMUX_REPO"
+adb shell run-as "$PKG" cp -r "$REMOTE_REPO/." "$TERMUX_REPO"
 
 set +e
 run_output=$(adb shell run-as "$PKG" env HOME="$TERMUX_HOME" PREFIX="$TERMUX_PREFIX" PATH="$TERMUX_PATH" TMPDIR="$TERMUX_PREFIX/tmp" "$TERMUX_BASH" "$TERMUX_SCRIPT" 2>&1)
