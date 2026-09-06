@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import time
 from pathlib import Path
 
 
@@ -75,6 +76,26 @@ def test_start_snapshot_and_stop_are_lifecycle_safe(tmp_path):
     finally:
         supervisor.stop(service)
 
+    assert supervisor.running(service.name) is None
+    assert not supervisor.path_for(service.name).exists()
+
+
+def test_completed_child_is_not_reported_as_running(tmp_path):
+    supervisor = load_module()
+    supervisor.HOME = tmp_path / ".vibecode"
+    supervisor.RUN = supervisor.HOME / "run"
+    supervisor.LOG = supervisor.HOME / "logs" / "services"
+    supervisor.CONF = supervisor.HOME / "services.conf"
+    supervisor.CONF.parent.mkdir(parents=True)
+    supervisor.CONF.write_text("probe=python3 -c 'pass'\n", encoding="utf-8")
+
+    service = supervisor.load()[0]
+    supervisor.start(service)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if supervisor.running(service.name) is None:
+            break
+        time.sleep(0.025)
     assert supervisor.running(service.name) is None
     assert not supervisor.path_for(service.name).exists()
 
