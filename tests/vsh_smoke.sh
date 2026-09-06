@@ -1,11 +1,26 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-VSH="$ROOT/native/vsh/vsh"
 make -C "$ROOT/native/vsh" clean all
+VSH="$ROOT/native/vsh/vsh"
+
 out="$(printf 'printf hello | tr a-z A-Z\n' | "$VSH")"
-grep -q 'HELLO' <<<"$out"
-out="$(printf 'printf abc > /tmp/vsh-smoke-out\n' | "$VSH")"
-test -s /tmp/vsh-smoke-out
-grep -q abc /tmp/vsh-smoke-out
+test "$out" = "HELLO"
+
+out="$(printf 'echo VIBECODE_OK\n' | "$VSH")"
+test "$out" = "VIBECODE_OK"
+
+out="$(printf 'pwd\n' | "$VSH")"
+test -n "$out"
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+printf 'printf abc > %s\n' "$tmp" | "$VSH" >/dev/null
+test "$(cat "$tmp")" = "abc"
+
+printf 'export VSH_TEST=ok\necho $VSH_TEST\n' | "$VSH" | grep -qx 'ok'
+
+printf 'true\n' | "$VSH" >/dev/null
+printf 'false\n' | "$VSH" >/dev/null
+
 printf '%s\n' 'vsh smoke: PASS'
