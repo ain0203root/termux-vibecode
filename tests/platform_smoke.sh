@@ -18,6 +18,8 @@ export PATH="$PREFIX/bin:$HOME/.vibecode/bin:$PATH"
 [[ -L "$PREFIX/bin/tv-ai" ]]
 [[ -L "$PREFIX/bin/vsh" ]]
 [[ "$(readlink -f "$PREFIX/bin/tv")" == "$HOME/.vibecode/bin/tv" ]]
+[[ -f "$HOME/.vibecode/.install-marker" ]]
+grep -q '^version=0.1.0$' "$HOME/.vibecode/.install-marker"
 
 [[ "$(tv version)" == "0.1.0" ]]
 workspace="$(tv workspace smoke)"
@@ -45,5 +47,15 @@ assert 'platform' in payload
 assert 'cpu_count' in payload
 assert 'android' in payload
 PY
+
+bash "$ROOT/platform/uninstall.sh" >/dev/null
+[[ ! -e "$PREFIX/bin/tv" ]]
+[[ ! -e "$PREFIX/bin/tune" ]]
+[[ ! -e "$PREFIX/bin/tv-ai" ]]
+[[ ! -e "$PREFIX/bin/vsh" ]]
+[[ ! -f "$HOME/.vibecode/version" ]]
+test -d "$HOME/.vibecode/workspaces/smoke"
+
+grep -qv 'Termux VibeCode' "$HOME/.bashrc" || ! grep -q 'export PATH="$HOME/.vibecode/bin:$PATH"' "$HOME/.bashrc"
 
 printf '%s\n' 'platform smoke: PASS'
