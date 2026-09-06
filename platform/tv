@@ -14,7 +14,7 @@ tv — Termux VibeCode control plane
   tv tune [detect|apply]
   tv shell
   tv workspace <name>
-  tv services [status|start|stop] [name]
+  tv services [status|start|stop|restart] [name]
   tv ai <prompt>
   tv version
 EOF
@@ -25,16 +25,26 @@ case "${1:-}" in
   status) py status ;;
   doctor) py doctor ;;
   tune) exec "$BIN/tune" "${@:2}" ;;
-  shell) exec "$BIN/vsh" ;;
+  shell)
+    [[ -x "$BIN/vsh" ]] || { printf '%s\n' 'vsh is not installed; run platform/install.sh first' >&2; exit 1; }
+    exec "$BIN/vsh"
+    ;;
   workspace)
     name="${2:-main}"
+    [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || { printf '%s\n' 'invalid workspace name' >&2; exit 2; }
     mkdir -p "$STATE/workspaces/$name"/{src,build,cache,tmp}
     printf '%s\n' "$STATE/workspaces/$name" ;;
   services)
     op="${2:-status}"
-    if [[ "$op" == status ]]; then exec python3 "$ROOT/core/supervisor.py" status; fi
-    [[ -n "${3:-}" ]] || { usage; exit 2; }
-    exec python3 "$ROOT/core/supervisor.py" "$op" "$3" ;;
+    case "$op" in
+      status) exec python3 "$STATE/supervisor.py" status ;;
+      start|stop|restart)
+        [[ -n "${3:-}" ]] || { usage; exit 2; }
+        exec python3 "$STATE/supervisor.py" "$op" "$3"
+        ;;
+      *) usage; exit 2 ;;
+    esac
+    ;;
   ai) shift; exec "$BIN/tv-ai" "$@" ;;
   version) cat "$STATE/version" 2>/dev/null || printf '%s\n' '0.1.0' ;;
   *) usage; exit 2 ;;
