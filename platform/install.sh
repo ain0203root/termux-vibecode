@@ -28,9 +28,8 @@ cp "$ROOT/config/performance.env" "$STATE/performance.env"
 cp "$ROOT/services/services.conf" "$STATE/services.conf"
 printf '%s\n' "${VIBECODE_VERSION:-0.1.0}" > "$STATE/version"
 
-# Termux already places $PREFIX/bin on PATH. Use symlinks so the installed
-# commands become visible to the current Termux environment without requiring
-# the parent shell to be re-sourced; state remains centralized under ~/.vibecode.
+# Keep state centralized under ~/.vibecode while exposing first-class commands
+# through the native Termux command directory immediately.
 if [[ -n "${PREFIX:-}" && -d "$PREFIX/bin" && -w "$PREFIX/bin" ]]; then
   ln -sfn "$BIN/tv" "$PREFIX/bin/tv"
   ln -sfn "$BIN/tune" "$PREFIX/bin/tune"
@@ -39,6 +38,14 @@ if [[ -n "${PREFIX:-}" && -d "$PREFIX/bin" && -w "$PREFIX/bin" ]]; then
     ln -sfn "$BIN/vsh" "$PREFIX/bin/vsh"
   fi
 fi
+
+cat > "$STATE/.install-marker" <<EOF
+version=$(cat "$STATE/version")
+state=$STATE
+prefix=${PREFIX:-}
+root=$ROOT
+timestamp=$(date +%s)
+EOF
 
 if ! grep -Fq '.vibecode/bin' "$HOME/.bashrc" 2>/dev/null; then
   printf '\n# Termux VibeCode\nexport PATH="$HOME/.vibecode/bin:$PATH"\n' >> "$HOME/.bashrc"
