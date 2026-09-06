@@ -35,7 +35,7 @@ self_test(){
   done
   if [[ -x "$BIN/vsh" ]]; then
     printf 'check.vsh=PASS\n'
-    if ! printf 'printf self-test-ok\\n' | "$BIN/vsh" | grep -Fqx 'self-test-ok'; then
+    if ! printf 'echo self-test-ok\n' | "$BIN/vsh" | grep -Fqx 'self-test-ok'; then
       printf '%s\n' 'check.vsh_exec=FAIL'
       failed=1
     else
