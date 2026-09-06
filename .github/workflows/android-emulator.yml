@@ -8,6 +8,10 @@ on:
 
 jobs:
   termux-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34, 35]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -28,10 +32,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run real Termux on Android Emulator
+      - name: Run Termux on Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           profile: pixel_7
