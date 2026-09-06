@@ -13,6 +13,7 @@ HOME="$TEMP_HOME" PREFIX="$TEMP_PREFIX" bash "$ROOT/platform/install.sh"
 export HOME="$TEMP_HOME"
 export PREFIX="$TEMP_PREFIX"
 export PATH="$PREFIX/bin:$HOME/.vibecode/bin:$PATH"
+TV="$HOME/.vibecode/bin/tv"
 
 [[ -L "$PREFIX/bin/tv" ]]
 [[ -L "$PREFIX/bin/tune" ]]
@@ -23,8 +24,8 @@ export PATH="$PREFIX/bin:$HOME/.vibecode/bin:$PATH"
 grep -q '^version=0.1.0$' "$HOME/.vibecode/.install-marker"
 grep -q '^prefix=' "$HOME/.vibecode/.install-marker"
 
-[[ "$(tv version)" == "0.1.0" ]]
-workspace="$(tv workspace smoke)"
+[[ "$(bash "$TV" version)" == "0.1.0" ]]
+workspace="$(bash "$TV" workspace smoke)"
 test -d "$workspace/src"
 test -d "$workspace/build"
 test -d "$workspace/cache"
@@ -34,19 +35,19 @@ test -d "$workspace/tmp"
 # inside the isolated temporary prefix used by this host-side test.
 real_prefix="$PREFIX"
 export PREFIX="/data/data/com.termux/files/usr"
-tv self-test > "$SELFTEST_FILE"
+bash "$TV" self-test > "$SELFTEST_FILE"
 grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$SELFTEST_FILE")
 export PREFIX="$real_prefix"
 
-printf 'printf installed-ok\\n' | tv shell | grep -qx 'installed-ok'
+printf 'printf installed-ok\\n' | bash "$TV" shell | grep -qx 'installed-ok'
 
 set +e
-tv workspace '../escape' >"$ERROR_FILE" 2>&1
+bash "$TV" workspace '../escape' >"$ERROR_FILE" 2>&1
 rc=$?
 set -e
 (( rc == 2 ))
 
-tv status >"$STATUS_FILE"
+bash "$TV" status >"$STATUS_FILE"
 python3 - "$STATUS_FILE" <<'PY'
 import json
 import sys
