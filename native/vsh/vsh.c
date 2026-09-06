@@ -14,9 +14,7 @@
 #define MAX_TOK 256
 #define HIST_MAX 128
 
-typedef struct {
-    char *text;
-} Token;
+typedef struct { char *text; } Token;
 
 static char *hist[HIST_MAX];
 static size_t hist_n;
@@ -68,10 +66,7 @@ static void redraw_line(const char *buf, size_t n, size_t cursor) {
 }
 
 static int read_line(char *buf, size_t cap) {
-    if (!isatty(STDIN_FILENO) || !tty_ready) {
-        return fgets(buf, (int)cap, stdin) ? 0 : -1;
-    }
-
+    if (!isatty(STDIN_FILENO) || !tty_ready) return fgets(buf, (int)cap, stdin) ? 0 : -1;
     printf("vsh> ");
     fflush(stdout);
     struct termios t = saved_tty;
@@ -586,17 +581,24 @@ static int execute_tokens(Token *tokens, int count) {
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
+            for (int i = 0; i < commands - 1; ++i) {
+                close(pipes[i][0]);
+                close(pipes[i][1]);
+            }
+            for (int i = 0; i < cmd; ++i) waitpid(pids[i], NULL, 0);
             return 1;
         }
         if (pid == 0) {
             signal(SIGINT, SIG_DFL);
             int in_fd = cmd > 0 ? pipes[cmd - 1][0] : STDIN_FILENO;
             int out_fd = cmd < commands - 1 ? pipes[cmd][1] : STDOUT_FILENO;
-            int rc = execute_segment(tokens, starts[cmd], ends[cmd], in_fd, out_fd);
+            if (in_fd != STDIN_FILENO && dup2(in_fd, STDIN_FILENO) < 0) _exit(1);
+            if (out_fd != STDOUT_FILENO && dup2(out_fd, STDOUT_FILENO) < 0) _exit(1);
             for (int i = 0; i < commands - 1; ++i) {
                 close(pipes[i][0]);
                 close(pipes[i][1]);
             }
+            int rc = execute_segment(tokens, starts[cmd], ends[cmd], STDIN_FILENO, STDOUT_FILENO);
             fflush(NULL);
             _exit(rc & 255);
         }
