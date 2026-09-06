@@ -31,11 +31,17 @@ test -d "$workspace/build"
 test -d "$workspace/cache"
 test -d "$workspace/tmp"
 
-# Exercise the Android-oriented self-test contract while keeping all files
-# inside the isolated temporary prefix used by this host-side test.
 real_prefix="$PREFIX"
 export PREFIX="/data/data/com.termux/files/usr"
-bash "$TV" self-test > "$SELFTEST_FILE"
+set +e
+bash "$TV" self-test > "$SELFTEST_FILE" 2>&1
+self_rc=$?
+set -e
+if (( self_rc != 0 )); then
+  printf '%s\n' 'self-test output:' >&2
+  cat "$SELFTEST_FILE" >&2
+  exit "$self_rc"
+fi
 grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$SELFTEST_FILE")
 export PREFIX="$real_prefix"
 
