@@ -191,9 +191,10 @@ def supervise() -> None:
                 continue
             if not service.restart or now < next_start[service.name]:
                 continue
+            current_delay = backoff[service.name]
             start(service)
-            next_start[service.name] = now + backoff[service.name]
-            backoff[service.name] = min(backoff[service.name] * 2.0, service.max_delay)
+            next_start[service.name] = now + current_delay
+            backoff[service.name] = min(current_delay * 2.0, service.max_delay)
         time.sleep(0.5)
 
 
