@@ -1,0 +1,36 @@
+name: Android Emulator
+
+on:
+  push:
+    branches: [main, 'forge/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  termux-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run real Termux on Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          cores: 4
+          ram-size: 6144M
+          heap-size: 512M
+          disk-size: 8192M
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          emulator-boot-timeout: 420
+          script: |
+            export TERMUX_APK="$RUNNER_TEMP/termux-app.apk"
+            curl -fL --retry 3 --retry-all-errors \
+              -o "$TERMUX_APK" \
+              "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_x86_64.apk"
+            bash ci/android-emulator-smoke.sh
