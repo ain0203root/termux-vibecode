@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_HOME="$(mktemp -d)"
-TEMP_PREFIX="$TEMP_HOME/prefix"
+TEMP_PREFIX="$TEMP_HOME/data/data/com.termux/files/usr"
 STATUS_FILE="$(mktemp)"
 ERROR_FILE="$(mktemp)"
 trap 'rm -rf "$TEMP_HOME"; rm -f "$STATUS_FILE" "$ERROR_FILE"' EXIT
@@ -20,6 +20,8 @@ export PATH="$PREFIX/bin:$HOME/.vibecode/bin:$PATH"
 [[ "$(readlink -f "$PREFIX/bin/tv")" == "$HOME/.vibecode/bin/tv" ]]
 [[ -f "$HOME/.vibecode/.install-marker" ]]
 grep -q '^version=0.1.0$' "$HOME/.vibecode/.install-marker"
+
+grep -q '^prefix=' "$HOME/.vibecode/.install-marker"
 
 [[ "$(tv version)" == "0.1.0" ]]
 workspace="$(tv workspace smoke)"
@@ -53,7 +55,7 @@ bash "$ROOT/platform/uninstall.sh" >/dev/null
 [[ ! -e "$PREFIX/bin/tune" ]]
 [[ ! -e "$PREFIX/bin/tv-ai" ]]
 [[ ! -e "$PREFIX/bin/vsh" ]]
-[[ ! -f "$HOME/.vibecode/version" ]]
+[[ ! -f "$HOME/.vibecode/.install-marker" ]]
 test -d "$HOME/.vibecode/workspaces/smoke"
 
 grep -qv 'Termux VibeCode' "$HOME/.bashrc" || ! grep -q 'export PATH="$HOME/.vibecode/bin:$PATH"' "$HOME/.bashrc"
