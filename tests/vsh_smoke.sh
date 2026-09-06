@@ -14,16 +14,21 @@ run_vsh() {
   local rc=$?
   set -e
   if [[ "$rc" -ne "$expected_rc" ]]; then
-    printf 'vsh test failed: %s (rc=%s expected=%s)\n' "$label" "$rc" "$expected_rc" >&2
-    printf '%s\n' "$output" >&2
+    printf 'vsh test failed: %s (rc=%s expected=%s output=%q)\n' "$label" "$rc" "$expected_rc" "$output" >&2
     return 1
   fi
   printf '%s\n' "$output"
 }
 
-test "$(run_vsh pipeline 'printf hello | tr a-z A-Z')" = "HELLO"
-test "$(run_vsh echo 'echo VIBECODE_OK')" = "VIBECODE_OK"
-test -n "$(run_vsh pwd 'pwd')"
+pipeline_output="$(run_vsh pipeline 'printf hello | tr a-z A-Z')"
+printf 'pipeline_output=%q\n' "$pipeline_output" >&2
+[[ "$pipeline_output" == "HELLO" ]]
+
+echo_output="$(run_vsh echo 'echo VIBECODE_OK')"
+[[ "$echo_output" == "VIBECODE_OK" ]]
+
+pwd_output="$(run_vsh pwd 'pwd')"
+[[ -n "$pwd_output" ]]
 
 tmp="$(mktemp)"
 outfile="$(mktemp)"
