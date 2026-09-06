@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -Eeuo pipefail
+
+STATE="${HOME}/.vibecode"
+PROFILE="${VIBECODE_PROFILE:-balanced}"
+
+cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 1)"
+page="$(getconf PAGESIZE 2>/dev/null || printf unknown)"
+termux="false"
+[[ "${PREFIX:-}" == /data/data/com.termux/* ]] && termux=true
+
+case "${1:-detect}" in
+  detect)
+    printf '{"profile":"%s","cpu_count":%s,"page_size":"%s","termux":%s}\n' "$PROFILE" "$cpu_count" "$page" "$termux"
+    ;;
+  apply)
+    mkdir -p "$STATE/state"
+    printf '%s\n' "$PROFILE" > "$STATE/state/profile"
+    printf '%s\n' 'Applied safe userland profile; kernel parameters were intentionally left untouched.'
+    ;;
+  *) printf '%s\n' 'usage: tune [detect|apply]' >&2; exit 2 ;;
+esac
