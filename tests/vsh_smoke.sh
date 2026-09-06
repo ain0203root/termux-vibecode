@@ -14,11 +14,17 @@ out="$(printf 'pwd\n' | "$VSH")"
 test -n "$out"
 
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+outfile="$(mktemp)"
+trap 'rm -f "$tmp" "$outfile"' EXIT
 printf 'printf abc > %s\n' "$tmp" | "$VSH" >/dev/null
 test "$(cat "$tmp")" = "abc"
+printf 'printf def >> %s\n' "$tmp" | "$VSH" >/dev/null
+test "$(cat "$tmp")" = "abcdef"
+printf 'cat < %s\n' "$tmp" | "$VSH" > "$outfile"
+test "$(cat "$outfile")" = "abcdef"
 
-printf 'export VSH_TEST=ok\necho $VSH_TEST\necho ${VSH_TEST}\n' | "$VSH" | grep -qx 'ok$'
+out="$(printf 'export VSH_TEST=ok\necho $VSH_TEST\necho ${VSH_TEST}\n' | "$VSH")"
+test "$out" = $'ok\nok'
 
 printf 'which sh\n' | "$VSH" | grep -q '/sh$'
 printf 'echo $$\n' | "$VSH" | grep -Eq '^[0-9]+$'
