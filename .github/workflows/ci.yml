@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Shell syntax
-        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh
+        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
       - name: Native build
         run: make -C native/vsh clean all
       - name: Native smoke
@@ -26,7 +26,9 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           make -C native/vsh clean all CFLAGS='-O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer'
-          bash tests/vsh_smoke.sh
+          test "$(printf 'printf sanitizer-ok\\n' | native/vsh/vsh)" = 'sanitizer-ok'
+          test "$(printf 'printf hello | tr a-z A-Z\\n' | native/vsh/vsh)" = 'HELLO'
+          test "$(printf 'export VSH_SAN=ok\\necho $VSH_SAN\\n' | native/vsh/vsh)" = 'ok'
       - name: Python tests
         run: python -m pip install -q pytest && pytest -q tests/test_tvd.py tests/test_supervisor.py tests/test_capabilities.py
       - name: Compile CI helpers
