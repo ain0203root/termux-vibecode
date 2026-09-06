@@ -20,7 +20,6 @@ export PATH="$PREFIX/bin:$HOME/.vibecode/bin:$PATH"
 [[ "$(readlink -f "$PREFIX/bin/tv")" == "$HOME/.vibecode/bin/tv" ]]
 [[ -f "$HOME/.vibecode/.install-marker" ]]
 grep -q '^version=0.1.0$' "$HOME/.vibecode/.install-marker"
-
 grep -q '^prefix=' "$HOME/.vibecode/.install-marker"
 
 [[ "$(tv version)" == "0.1.0" ]]
@@ -58,6 +57,7 @@ bash "$ROOT/platform/uninstall.sh" >/dev/null
 [[ ! -f "$HOME/.vibecode/.install-marker" ]]
 test -d "$HOME/.vibecode/workspaces/smoke"
 
-grep -qv 'Termux VibeCode' "$HOME/.bashrc" || ! grep -q 'export PATH="$HOME/.vibecode/bin:$PATH"' "$HOME/.bashrc"
+! grep -Fqx '# Termux VibeCode' "$HOME/.bashrc"
+! grep -Fqx 'export PATH="$HOME/.vibecode/bin:$PATH"' "$HOME/.bashrc"
 
 printf '%s\n' 'platform smoke: PASS'
