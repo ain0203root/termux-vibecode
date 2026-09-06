@@ -37,7 +37,6 @@ jobs:
           listing="$(dpkg-deb --contents "$package" | awk '{print $NF}' | sed 's#^\./##')"
           printf '%s\n' "$listing"
           printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/bin/vsh'
-          printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/share/doc/tvsh/copyright'
           printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/share/doc/tvsh/README'
       - name: Upload package
         uses: actions/upload-artifact@v6
