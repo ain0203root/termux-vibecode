@@ -110,6 +110,66 @@ static int tokenize(char *s, char **tok) {
     tok[n] = NULL; return n;
 }
 
+static int is_var_start(unsigned char c) { return isalpha(c) || c == '_'; }
+static int is_var_char(unsigned char c) { return isalnum(c) || c == '_'; }
+
+static char *expand_token(const char *src) {
+    size_t cap = strlen(src) + 32, n = 0;
+    char *out = malloc(cap);
+    if (!out) return NULL;
+    for (size_t i = 0; src[i]; ) {
+        if (src[i] != '$') {
+            if (n + 2 > cap) { cap *= 2; out = realloc(out, cap); if (!out) return NULL; }
+            out[n++] = src[i++];
+            continue;
+        }
+        if (src[i + 1] == '$') {
+            char pid[32]; snprintf(pid, sizeof(pid), "%ld", (long)getpid());
+            size_t m = strlen(pid); while (n + m + 1 > cap) { cap *= 2; out = realloc(out, cap); if (!out) return NULL; }
+            memcpy(out + n, pid, m); n += m; i += 2; continue;
+        }
+        size_t start = i + 1, end = start;
+        if (src[start] == '{') {
+            start++; end = start;
+            while (is_var_char((unsigned char)src[end])) end++;
+            if (src[end] == '}') {
+                size_t len = end - start;
+                char name[256];
+                if (len < sizeof(name)) {
+                    memcpy(name, src + start, len); name[len] = 0;
+                    const char *value = getenv(name); if (!value) value = "";
+                    size_t m = strlen(value); while (n + m + 1 > cap) { cap *= 2; out = realloc(out, cap); if (!out) return NULL; }
+                    memcpy(out + n, value, m); n += m; i = end + 1; continue;
+                }
+            }
+        } else if (is_var_start((unsigned char)src[start])) {
+            while (is_var_char((unsigned char)src[end])) end++;
+            size_t len = end - start;
+            char name[256];
+            if (len < sizeof(name)) {
+                memcpy(name, src + start, len); name[len] = 0;
+                const char *value = getenv(name); if (!value) value = "";
+                size_t m = strlen(value); while (n + m + 1 > cap) { cap *= 2; out = realloc(out, cap); if (!out) return NULL; }
+                memcpy(out + n, value, m); n += m; i = end; continue;
+            }
+        }
+        if (n + 2 > cap) { cap *= 2; out = realloc(out, cap); if (!out) return NULL; }
+        out[n++] = '$'; i++;
+    }
+    out[n] = 0;
+    return out;
+}
+
+static int expand_tokens(char **tok, int ntok) {
+    for (int i = 0; i < ntok; i++) {
+        if (strchr(tok[i], '$') == NULL) continue;
+        char *expanded = expand_token(tok[i]);
+        if (!expanded) return -1;
+        free(tok[i]); tok[i] = expanded;
+    }
+    return 0;
+}
+
 static int builtin(char **a) {
     if (!a[0]) return 1;
     if (!strcmp(a[0], "exit")) exit(0);
@@ -135,8 +195,19 @@ static int builtin(char **a) {
     if (!strcmp(a[0], "history")) {
         for (size_t i = 0; i < hist_n; i++) printf("%4zu  %s\n", i + 1, hist[i]); return 1;
     }
+    if (!strcmp(a[0], "which")) {
+        if (!a[1]) return 1;
+        char *path = getenv("PATH"); if (!path) return 1;
+        char *copy = strdup(path); if (!copy) return 1;
+        for (char *p = copy, *save = NULL; ; p = NULL) {
+            char *dir = strtok_r(p, ":", &save); if (!dir) break;
+            char candidate[4096]; snprintf(candidate, sizeof(candidate), "%s/%s", *dir ? dir : ".", a[1]);
+            if (access(candidate, X_OK) == 0) { puts(candidate); free(copy); return 1; }
+        }
+        free(copy); return 1;
+    }
     if (!strcmp(a[0], "help")) {
-        puts("vsh: cd pwd echo export unset history true false : exit help"); return 1;
+        puts("vsh: cd pwd echo export unset history which true false : exit help"); return 1;
     }
     return 0;
 }
@@ -192,7 +263,8 @@ int main(void) {
         add_history(line);
         char *tok[MAX_TOK]; int ntok = tokenize(line, tok);
         if (!ntok) continue;
-        if (!builtin(tok)) execute(tok, ntok);
+        if (expand_tokens(tok, ntok) != 0) { fprintf(stderr, "vsh: expansion failed\n"); }
+        else if (!builtin(tok)) execute(tok, ntok);
         for (int i = 0; i < ntok; i++) free(tok[i]);
     }
     return 0;
