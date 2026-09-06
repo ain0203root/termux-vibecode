@@ -9,7 +9,7 @@ on:
 jobs:
   termux-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -22,7 +22,7 @@ jobs:
           target: google_apis
           profile: pixel_7
           cores: 4
-          ram-size: 6144M
+          ram-size: 6144
           heap-size: 512M
           disk-size: 8192M
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
