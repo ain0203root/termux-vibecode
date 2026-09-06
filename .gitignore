@@ -1,0 +1,6 @@
+.vibecode/
+native/vsh/vsh
+.pytest_cache/
+__pycache__/
+*.log
+bench/*.out

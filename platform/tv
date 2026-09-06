@@ -1,0 +1,41 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -Eeuo pipefail
+
+STATE="${HOME}/.vibecode"
+BIN="$STATE/bin"
+ROOT="${VIBECODE_ROOT:-$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
+export VIBECODE_ROOT="$ROOT"
+
+usage(){ cat <<'EOF'
+tv — Termux VibeCode control plane
+
+  tv status
+  tv doctor
+  tv tune [detect|apply]
+  tv shell
+  tv workspace <name>
+  tv services [status|start|stop] [name]
+  tv ai <prompt>
+  tv version
+EOF
+}
+py(){ exec python3 "$STATE/tvd.py" "$@"; }
+
+case "${1:-}" in
+  status) py status ;;
+  doctor) py doctor ;;
+  tune) exec "$BIN/tune" "${@:2}" ;;
+  shell) exec "$BIN/vsh" ;;
+  workspace)
+    name="${2:-main}"
+    mkdir -p "$STATE/workspaces/$name"/{src,build,cache,tmp}
+    printf '%s\n' "$STATE/workspaces/$name" ;;
+  services)
+    op="${2:-status}"
+    if [[ "$op" == status ]]; then exec python3 "$ROOT/core/supervisor.py" status; fi
+    [[ -n "${3:-}" ]] || { usage; exit 2; }
+    exec python3 "$ROOT/core/supervisor.py" "$op" "$3" ;;
+  ai) shift; exec "$BIN/tv-ai" "$@" ;;
+  version) cat "$STATE/version" 2>/dev/null || printf '%s\n' '0.1.0' ;;
+  *) usage; exit 2 ;;
+esac
