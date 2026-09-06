@@ -6,7 +6,7 @@ import pathlib
 import sys
 from urllib.request import Request, urlopen
 
-URL = "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_x86_64.apk"
+URL = "https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3+apt-android-7-github-debug_universal.apk"
 EXPECTED_MIN_BYTES = 10_000_000
 
 
