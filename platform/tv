@@ -1,0 +1,39 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -Eeuo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE="${HOME}/.vibecode"
+BIN="$STATE/bin"
+export VIBECODE_ROOT="$ROOT"
+
+usage(){ cat <<'EOF'
+tv — Termux VibeCode control plane
+
+  tv status                 system snapshot
+  tv doctor                 capability and dependency checks
+  tv tune                   detect/apply safe userland tuning
+  tv shell                 launch native vsh when installed
+  tv workspace <name>       create/open workspace
+  tv services               list configured services
+  tv version                show platform version
+EOF
+}
+
+json_status(){ python3 "$STATE/tvd.py" status; }
+json_doctor(){ python3 "$STATE/tvd.py" doctor; }
+
+case "${1:-}" in
+  status) json_status ;;
+  doctor) json_doctor ;;
+  tune) exec "$BIN/tune" "${@:2}" ;;
+  shell)
+    if [[ -x "$BIN/vsh" ]]; then exec "$BIN/vsh"; fi
+    printf '%s\n' 'native vsh is not built; run platform/install.sh again with clang installed' >&2
+    exit 1 ;;
+  workspace)
+    name="${2:-main}"; mkdir -p "$STATE/workspaces/$name/src" "$STATE/workspaces/$name/build" "$STATE/workspaces/$name/cache"
+    printf '%s\n' "$STATE/workspaces/$name" ;;
+  services) cat "$STATE/services.conf" ;;
+  version) cat "$STATE/version" 2>/dev/null || printf '%s\n' '0.1.0' ;;
+  *) usage; exit 2 ;;
+esac
