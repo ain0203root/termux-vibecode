@@ -75,13 +75,22 @@ def status() -> dict[str, object]:
 
 
 def doctor() -> dict[str, object]:
-    names = ["bash", "clang", "make", "python", "git", "ssh", "tmux"]
-    checks = {name: shutil.which(name) or False for name in names}
-    checks["termux"] = os.getenv("PREFIX", "").startswith("/data/data/com.termux")
-    checks["procfs"] = Path("/proc").exists()
-    checks["home"] = Path.home().exists()
-    missing = [k for k, v in checks.items() if not v]
-    result: dict[str, object] = {"ok": not missing, "checks": checks, "missing": missing}
+    required_names = ["bash", "python"]
+    optional_names = ["clang", "make", "git", "ssh", "tmux"]
+    required = {name: shutil.which(name) or False for name in required_names}
+    optional = {name: shutil.which(name) or False for name in optional_names}
+    required["termux"] = os.getenv("PREFIX", "").startswith("/data/data/com.termux")
+    required["procfs"] = Path("/proc").exists()
+    required["home"] = Path.home().exists()
+    missing_required = [k for k, v in required.items() if not v]
+    missing_optional = [k for k, v in optional.items() if not v]
+    result: dict[str, object] = {
+        "ok": not missing_required,
+        "required": required,
+        "optional": optional,
+        "missing_required": missing_required,
+        "missing_optional": missing_optional,
+    }
     if capability_snapshot is not None:
         result["capabilities"] = capability_snapshot()
     emit("doctor", **result)
