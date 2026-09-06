@@ -195,7 +195,7 @@ def supervise() -> None:
                 continue
             current_delay = backoff[service.name]
             start(service)
-            next_start[service.name] = now + current_delay
+            next_start[service.name] = now + min(current_delay * 2.0, service.max_delay)
             backoff[service.name] = min(current_delay * 2.0, service.max_delay)
         time.sleep(0.5)
 
