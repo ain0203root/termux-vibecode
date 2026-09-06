@@ -39,10 +39,15 @@ printf 'VIBECODE_ANDROID_SMOKE=1\n'
 printf 'uname='; uname -a
 printf 'arch='; uname -m
 printf 'termux_prefix=%s\n' "$PREFIX"
-printf 'android_release='; getprop ro.build.version.release
-printf 'android_api='; getprop ro.build.version.sdk
+printf 'android_release='; /system/bin/getprop ro.build.version.release
+printf 'android_api='; /system/bin/getprop ro.build.version.sdk
 printf 'termux_uid='; id -u
 printf 'termux_gid='; id -g
+printf 'path=%s\n' "$PATH"
+
+command -v bash
+command -v pkg
+command -v clang || true
 
 pkg install -y clang make
 rm -rf "$ROOT"
@@ -73,10 +78,13 @@ adb shell chmod 755 "$REMOTE_TMP"
 adb shell run-as "$PKG" cp "$REMOTE_TMP" files/home/vibecode-smoke.sh
 adb shell run-as "$PKG" chmod 755 files/home/vibecode-smoke.sh
 
-# Run directly as the Termux application UID. This exercises the actual Termux
-# filesystem, dynamic linker, package manager, /proc, Android bionic compatibility,
-# and our native binary without bypassing Termux/Android exported-component rules.
-adb shell run-as "$PKG" /data/data/$PKG/files/usr/bin/bash files/home/vibecode-smoke.sh
+set +e
+run_output=$(adb shell run-as "$PKG" /data/data/$PKG/files/usr/bin/bash files/home/vibecode-smoke.sh 2>&1)
+run_rc=$?
+set -e
+printf '%s\n' "$run_output"
+printf 'termux_run_rc=%s\n' "$run_rc"
+adb shell run-as "$PKG" test -f files/home/vibecode-emulator-result
 adb shell run-as "$PKG" cat files/home/vibecode-emulator-result
 adb shell run-as "$PKG" grep -q '^SMOKE=PASS$' files/home/vibecode-emulator-result
 printf '%s\n' 'ANDROID_EMULATOR_SMOKE=PASS'
