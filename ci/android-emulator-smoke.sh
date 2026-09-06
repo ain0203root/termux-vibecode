@@ -34,6 +34,7 @@ adb shell run-as "$PKG" test -x "$TERMUX_BASH"
 adb shell mkdir -p "$REMOTE_SRC"
 adb push native/vsh/vsh.c "$REMOTE_SRC/vsh.c" >/dev/null
 adb push native/vsh/Makefile "$REMOTE_SRC/Makefile" >/dev/null
+adb push native/vsh/bench.c "$REMOTE_SRC/bench.c" >/dev/null
 
 cat > /tmp/vibecode-smoke.sh <<'EOS'
 #!/data/data/com.termux/files/usr/bin/bash
