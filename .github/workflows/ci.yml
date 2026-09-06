@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Shell syntax
-        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh
+        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh
       - name: Native build
         run: make -C native/vsh clean all
       - name: Native smoke
@@ -21,4 +21,6 @@ jobs:
       - name: Native benchmark
         run: make -C native/vsh check
       - name: Python tests
-        run: python -m pip install -q pytest && pytest -q tests/test_tvd.py tests/test_supervisor.py
+        run: python -m pip install -q pytest && pytest -q tests/test_tvd.py tests/test_supervisor.py tests/test_capabilities.py
+      - name: Compile CI helpers
+        run: python -m py_compile ci/download-termux.py
