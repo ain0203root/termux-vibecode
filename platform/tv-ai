@@ -1,0 +1,19 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -Eeuo pipefail
+
+url="${VIBECODE_AI_URL:-${OPENAI_BASE_URL:-http://127.0.0.1:11434/v1/chat/completions}}"
+model="${VIBECODE_AI_MODEL:-${OPENAI_MODEL:-}}"
+key="${VIBECODE_AI_KEY:-${OPENAI_API_KEY:-}}"
+prompt="${*:-}"
+[[ -n "$prompt" ]] || { printf '%s\n' 'usage: tv ai "your prompt"' >&2; exit 2; }
+[[ -n "$model" ]] || { printf '%s\n' 'set VIBECODE_AI_MODEL or OPENAI_MODEL' >&2; exit 1; }
+
+payload="$(python3 - "$model" "$prompt" <<'PY'
+import json,sys
+model,prompt=sys.argv[1:]
+print(json.dumps({'model':model,'messages':[{'role':'user','content':prompt}]}))
+PY
+)"
+args=(-fsS "$url" -H 'Content-Type: application/json' -d "$payload")
+[[ -n "$key" ]] && args+=(-H "Authorization: Bearer $key")
+curl "${args[@]}"
