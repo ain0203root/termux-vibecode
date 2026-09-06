@@ -34,7 +34,7 @@ static void add_history(const char *s) {
 static int read_line(char *buf, size_t cap) {
     if (!isatty(STDIN_FILENO)) return fgets(buf, (int)cap, stdin) ? 0 : -1;
     printf("vsh> "); fflush(stdout);
-    size_t n = 0, pos = 0, cursor = 0;
+    size_t n = 0, cursor = 0;
     memset(buf, 0, cap);
     struct termios t = saved;
     t.c_lflag &= (tcflag_t)~(ICANON | ECHO);
@@ -44,15 +44,15 @@ static int read_line(char *buf, size_t cap) {
         unsigned char c;
         if (read(STDIN_FILENO, &c, 1) != 1) return -1;
         if (c == '\n' || c == '\r') { buf[n] = 0; putchar('\n'); tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); return (int)n; }
-        if (c == 3) { putchar('^'); putchar('C'); putchar('\n'); buf[0] = 0; tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); return 0; }
+        if (c == 3) { puts("^C"); buf[0] = 0; tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); return 0; }
         if (c == 127 || c == 8) {
             if (cursor) { memmove(buf + cursor - 1, buf + cursor, n - cursor); n--; cursor--; buf[n] = 0; printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout); }
             continue;
         }
         if (c == 27) { unsigned char seq[2]; if (read(STDIN_FILENO, seq, 2) == 2 && seq[0] == '[') {
-                if (seq[1] == 'C' && cursor < n) { cursor++; printf("\x1b[C"); }
-                else if (seq[1] == 'D' && cursor) { cursor--; printf("\x1b[D"); }
-                fflush(stdout);
+                if (seq[1] == 'C' && cursor < n) cursor++;
+                else if (seq[1] == 'D' && cursor) cursor--;
+                printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout);
             } continue; }
         if (isprint(c) && n + 1 < cap) { memmove(buf + cursor + 1, buf + cursor, n - cursor); buf[cursor++] = (char)c; n++; buf[n] = 0; printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout); }
     }
@@ -68,9 +68,9 @@ static int tokenize(char *s, char **tok) {
             else { char x[2] = {*p, 0}; tok[n++] = strdup(x); p++; }
             continue;
         }
-        char quote = 0; char tmp[MAX_LINE]; size_t j = 0;
+        char quote = 0, tmp[MAX_LINE]; size_t j = 0;
         while (*p) {
-            if ((*p == '\'' || *p == '"')) { if (!quote) quote = *p; else if (quote == *p) quote = 0; else tmp[j++] = *p; p++; continue; }
+            if (*p == '\'' || *p == '"') { if (!quote) quote = *p; else if (quote == *p) quote = 0; else if (j + 1 < sizeof(tmp)) tmp[j++] = *p; p++; continue; }
             if (!quote && (isspace((unsigned char)*p) || strchr("|<>", *p))) break;
             if (j + 1 < sizeof(tmp)) tmp[j++] = *p;
             p++;
@@ -85,10 +85,14 @@ static int builtin(char **a) {
     if (!strcmp(a[0], "exit")) exit(0);
     if (!strcmp(a[0], "cd")) { const char *d = a[1] ? a[1] : getenv("HOME"); if (chdir(d) < 0) perror("cd"); return 1; }
     if (!strcmp(a[0], "pwd")) { char b[4096]; if (getcwd(b, sizeof(b))) puts(b); return 1; }
+    if (!strcmp(a[0], "echo")) { for (int i = 1; a[i]; i++) { if (i > 1) putchar(' '); fputs(a[i], stdout); } putchar('\n'); return 1; }
+    if (!strcmp(a[0], "true")) return 1;
+    if (!strcmp(a[0], "false")) return 1;
+    if (!strcmp(a[0], ":")) return 1;
     if (!strcmp(a[0], "export")) { if (a[1]) { char *eq = strchr(a[1], '='); if (eq) { *eq = 0; setenv(a[1], eq + 1, 1); } } return 1; }
     if (!strcmp(a[0], "unset")) { if (a[1]) unsetenv(a[1]); return 1; }
     if (!strcmp(a[0], "history")) { for (size_t i = 0; i < hist_n; i++) printf("%4zu  %s\n", i + 1, hist[i]); return 1; }
-    if (!strcmp(a[0], "help")) { puts("vsh: cd pwd export unset history exit help"); return 1; }
+    if (!strcmp(a[0], "help")) { puts("vsh: cd pwd echo export unset history true false : exit help"); return 1; }
     return 0;
 }
 
@@ -101,8 +105,7 @@ static int execute(char **tok, int ntok) {
     pid_t pids[MAX_TOK]; int pipes[MAX_TOK][2];
     for (int i = 0; i < ncmd - 1; i++) if (pipe(pipes[i]) < 0) return 1;
     for (int c = 0; c < ncmd; c++) {
-        pid_t pid = fork();
-        if (pid < 0) return 1;
+        pid_t pid = fork(); if (pid < 0) return 1;
         if (pid == 0) {
             signal(SIGINT, SIG_DFL);
             if (c) dup2(pipes[c - 1][0], STDIN_FILENO);
@@ -125,8 +128,7 @@ static int execute(char **tok, int ntok) {
         pids[c] = pid;
     }
     for (int i = 0; i < ncmd - 1; i++) { close(pipes[i][0]); close(pipes[i][1]); }
-    wait_all(pids, ncmd);
-    return 0;
+    wait_all(pids, ncmd); return 0;
 }
 
 int main(void) {
@@ -134,11 +136,9 @@ int main(void) {
     char line[MAX_LINE];
     while (read_line(line, sizeof(line)) >= 0) {
         size_t n = strlen(line); if (n && line[n - 1] == '\n') line[n - 1] = 0;
-        if (!*line) continue;
-        add_history(line);
-        char *tok[MAX_TOK]; int ntok = tokenize(line, tok);
-        if (ntok == 0) continue;
-        if (ntok > 0 && !strchr(tok[0], '/')) { char *tmp[MAX_TOK]; for (int i = 0; i < ntok; i++) tmp[i] = tok[i]; tmp[ntok] = NULL; if (ntok && !builtin(tmp)) execute(tok, ntok); }
+        if (!*line) continue; add_history(line);
+        char *tok[MAX_TOK]; int ntok = tokenize(line, tok); if (!ntok) continue;
+        if (!builtin(tok)) execute(tok, ntok);
         for (int i = 0; i < ntok; i++) free(tok[i]);
     }
     return 0;
