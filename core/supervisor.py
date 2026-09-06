@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -13,6 +14,7 @@ HOME = Path.home() / ".vibecode"
 CONF = HOME / "services.conf"
 RUN = HOME / "run"
 LOG = HOME / "logs" / "services"
+NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,7 @@ class Service:
 
 def load() -> list[Service]:
     out: list[Service] = []
+    seen: set[str] = set()
     if not CONF.exists():
         return out
     for raw in CONF.read_text(encoding="utf-8").splitlines():
@@ -34,12 +37,16 @@ def load() -> list[Service]:
             continue
         name, command = line.split("=", 1)
         name, command = name.strip(), command.strip()
-        if name and command:
-            out.append(Service(name, command))
+        if not name or not command or not NAME_RE.fullmatch(name) or name in seen:
+            continue
+        seen.add(name)
+        out.append(Service(name, command))
     return out
 
 
 def path_for(name: str) -> Path:
+    if not NAME_RE.fullmatch(name):
+        raise ValueError(f"invalid service name: {name}")
     return RUN / f"{name}.pid"
 
 
