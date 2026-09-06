@@ -1,6 +1,5 @@
 import importlib.util
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -32,7 +31,7 @@ def test_service_config_is_parseable():
         assert command.strip()
 
 
-def test_start_snapshot_and_stop_are_lifecycle_safe(tmp_path, monkeypatch):
+def test_start_snapshot_and_stop_are_lifecycle_safe(tmp_path):
     supervisor = load_module()
     supervisor.HOME = tmp_path / ".vibecode"
     supervisor.CONF = supervisor.HOME / "services.conf"
@@ -43,25 +42,22 @@ def test_start_snapshot_and_stop_are_lifecycle_safe(tmp_path, monkeypatch):
 
     service = supervisor.load()[0]
     pid = supervisor.start(service)
-    assert pid > 0
-    assert supervisor.running(service.name) == pid
+    try:
+        assert pid > 0
+        assert supervisor.running(service.name) == pid
 
-    record = supervisor.path_for(service.name).read_text(encoding="utf-8")
-    assert '"pid":' in record
-    assert '"starttime":' in record
-    assert '"command":' in record
+        record = supervisor.path_for(service.name).read_text(encoding="utf-8")
+        assert '"pid":' in record
+        assert '"starttime":' in record
+        assert '"command":' in record
 
-    snapshot = supervisor.snapshot()
-    assert snapshot == [{"name": "probe", "command": service.command, "restart": True, "pid": pid}]
+        snapshot = supervisor.snapshot()
+        assert snapshot == [{"name": "probe", "command": service.command, "restart": True, "pid": pid}]
+    finally:
+        supervisor.stop(service)
 
-    supervisor.stop(service)
-    for _ in range(40):
-        if supervisor.running(service.name) is None:
-            break
-        time.sleep(0.025)
     assert supervisor.running(service.name) is None
     assert not supervisor.path_for(service.name).exists()
-    monkeypatch.setattr(sys, "path", sys.path)
 
 
 def test_pid_record_does_not_accept_reused_process_identity(tmp_path):
