@@ -36,11 +36,11 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           make -C native/vsh clean all CFLAGS='-O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer'
-          test "$(printf 'printf sanitizer-ok\\n' | native/vsh/vsh)" = 'sanitizer-ok'
-          test "$(printf 'printf hello | tr a-z A-Z\\n' | native/vsh/vsh)" = 'HELLO'
-          test "$(printf 'export VSH_SAN=ok\\necho $VSH_SAN\\n' | native/vsh/vsh)" = 'ok'
-          test "$(printf 'false\\necho $?\\n' | native/vsh/vsh)" = '1'
-          test "$(printf 'printf \"quoted value\\n\"\\n' | native/vsh/vsh)" = 'quoted value'
+          test "$(printf '%s\n' 'echo sanitizer-ok' | native/vsh/vsh)" = 'sanitizer-ok'
+          test "$(printf '%s\n' 'printf hello | tr a-z A-Z' | native/vsh/vsh)" = 'HELLO'
+          test "$(printf '%s\n' 'export VSH_SAN=ok' 'echo $VSH_SAN' | native/vsh/vsh)" = 'ok'
+          test "$(printf '%s\n' 'false' 'echo $?' | native/vsh/vsh)" = '1'
+          test "$(printf '%s\n' 'echo "quoted value"' | native/vsh/vsh)" = 'quoted value'
       - name: Python tests
         run: python -m pip install -q pytest && pytest -q tests/test_tvd.py tests/test_supervisor.py tests/test_capabilities.py
       - name: Compile CI helpers
