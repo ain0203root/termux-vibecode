@@ -2,18 +2,25 @@
 set -Eeuo pipefail
 
 PKG=com.termux
+TERMUX_APK="${TERMUX_APK:-${RUNNER_TEMP:-/tmp}/termux-app.apk}"
 REMOTE_HOME=/data/data/$PKG/files/home
 REMOTE_TMP=/data/local/tmp/vibecode-smoke.sh
 REMOTE_SRC=/data/local/tmp/vibecode-src/native/vsh
 
+[[ -s "$TERMUX_APK" ]] || { echo "missing TERMUX_APK: $TERMUX_APK" >&2; exit 1; }
+
 adb wait-for-device
-adb shell 'getprop sys.boot_completed' | grep -q '^1$'
+for _ in $(seq 1 120); do
+  state=$(adb get-state 2>/dev/null || true)
+  [[ "$state" == "device" ]] && break
+  sleep 1
+done
+[[ "$(adb get-state 2>/dev/null)" == "device" ]]
 
 adb install -r "$TERMUX_APK"
 adb shell am start -W -n "$PKG/.app.TermuxActivity" >/dev/null
 
-# First launch performs bootstrap extraction. Give the app a bounded window.
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   if adb shell run-as "$PKG" test -x /data/data/$PKG/files/usr/bin/bash >/dev/null 2>&1; then break; fi
   sleep 2
 done
@@ -33,7 +40,6 @@ printf 'termux_prefix=%s\n' "$PREFIX"
 printf 'android_release='; getprop ro.build.version.release
 printf 'android_api='; getprop ro.build.version.sdk
 
-pkg update -y
 pkg install -y clang make
 rm -rf "$ROOT"
 mkdir -p "$ROOT"
@@ -67,11 +73,11 @@ adb shell run-as "$PKG" chmod 755 "files/home/.shortcuts/vibecode-smoke.sh"
 
 adb shell am startservice -n "$PKG/.app.TermuxService" -a com.termux.service_execute -d "$REMOTE_HOME/.shortcuts/vibecode-smoke.sh" >/dev/null
 
-for _ in $(seq 1 90); do
+for _ in $(seq 1 120); do
   if adb shell run-as "$PKG" test -f "files/home/vibecode-emulator-result" >/dev/null 2>&1; then break; fi
   sleep 2
 done
-
+adb shell run-as "$PKG" test -f "files/home/vibecode-emulator-result"
 adb shell run-as "$PKG" cat "files/home/vibecode-emulator-result"
 adb shell run-as "$PKG" grep -q '^SMOKE=PASS$' "files/home/vibecode-emulator-result"
 printf '%s\n' 'ANDROID_EMULATOR_SMOKE=PASS'
