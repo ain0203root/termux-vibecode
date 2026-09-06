@@ -3,7 +3,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,163 +10,136 @@
 #include <termios.h>
 #include <unistd.h>
 
-extern char **environ;
-
 #define MAX_LINE 4096
-#define MAX_ARGS 256
+#define MAX_TOK 256
 #define HIST_MAX 128
 
-static char *history[HIST_MAX];
-static size_t history_len;
+static char *hist[HIST_MAX];
+static size_t hist_n;
 static struct termios saved;
 
-static void restore_tty(void) {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved);
-}
-
-static void raw_tty(void) {
+static void restore_tty(void) { tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); }
+static void setup_tty(void) {
     if (!isatty(STDIN_FILENO)) return;
     if (tcgetattr(STDIN_FILENO, &saved) != 0) return;
     atexit(restore_tty);
-    struct termios t = saved;
-    t.c_lflag &= (tcflag_t)~(ICANON | ECHO);
-    t.c_cc[VMIN] = 1;
-    t.c_cc[VTIME] = 0;
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &t);
 }
 
-static void hist_add(const char *line) {
-    if (!*line) return;
-    if (history_len && strcmp(history[history_len - 1], line) == 0) return;
-    if (history_len == HIST_MAX) {
-        free(history[0]);
-        memmove(history, history + 1, sizeof(history[0]) * (HIST_MAX - 1));
-        history_len--;
-    }
-    history[history_len++] = strdup(line);
+static void add_history(const char *s) {
+    if (!*s || (hist_n && strcmp(hist[hist_n - 1], s) == 0)) return;
+    if (hist_n == HIST_MAX) { free(hist[0]); memmove(hist, hist + 1, sizeof(hist[0]) * (HIST_MAX - 1)); hist_n--; }
+    hist[hist_n++] = strdup(s);
 }
 
 static int read_line(char *buf, size_t cap) {
-    size_t n = 0, cursor = 0, h = history_len;
-    memset(buf, 0, cap);
-    if (!isatty(STDIN_FILENO)) return fgets(buf, (int)cap, stdin) ? (int)strlen(buf) : 0;
+    if (!isatty(STDIN_FILENO)) return fgets(buf, (int)cap, stdin) ? 0 : -1;
     printf("vsh> "); fflush(stdout);
-    for (;;) {
+    size_t n = 0, pos = 0, cursor = 0;
+    memset(buf, 0, cap);
+    struct termios t = saved;
+    t.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+    t.c_cc[VMIN] = 1; t.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &t);
+    while (1) {
         unsigned char c;
-        if (read(STDIN_FILENO, &c, 1) != 1) return 0;
-        if (c == '\n' || c == '\r') {
-            buf[n] = '\0'; putchar('\n'); return (int)n;
-        }
+        if (read(STDIN_FILENO, &c, 1) != 1) return -1;
+        if (c == '\n' || c == '\r') { buf[n] = 0; putchar('\n'); tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); return (int)n; }
+        if (c == 3) { putchar('^'); putchar('C'); putchar('\n'); buf[0] = 0; tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved); return 0; }
         if (c == 127 || c == 8) {
-            if (cursor) {
-                memmove(buf + cursor - 1, buf + cursor, n - cursor);
-                n--; cursor--; buf[n] = '\0';
-                printf("\r\x1b[Kvsh> %s", buf); printf("\x1b[%zuD", n - cursor); fflush(stdout);
-            }
+            if (cursor) { memmove(buf + cursor - 1, buf + cursor, n - cursor); n--; cursor--; buf[n] = 0; printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout); }
             continue;
         }
-        if (c == 27) {
-            unsigned char seq[2];
-            if (read(STDIN_FILENO, seq, 2) != 2 || seq[0] != '[') continue;
-            if (seq[1] == 'A' && h) { h--; strncpy(buf, history[h], cap - 1); n = cursor = strlen(buf); printf("\r\x1b[Kvsh> %s", buf); fflush(stdout); }
-            else if (seq[1] == 'B' && h + 1 < history_len) { h++; strncpy(buf, history[h], cap - 1); n = cursor = strlen(buf); printf("\r\x1b[Kvsh> %s", buf); fflush(stdout); }
-            else if (seq[1] == 'C' && cursor < n) { cursor++; printf("\x1b[C"); fflush(stdout); }
-            else if (seq[1] == 'D' && cursor) { cursor--; printf("\x1b[D"); fflush(stdout); }
-            continue;
-        }
-        if (isprint(c) && n + 1 < cap) {
-            memmove(buf + cursor + 1, buf + cursor, n - cursor);
-            buf[cursor++] = (char)c; n++; buf[n] = '\0';
-            printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout);
-        }
+        if (c == 27) { unsigned char seq[2]; if (read(STDIN_FILENO, seq, 2) == 2 && seq[0] == '[') {
+                if (seq[1] == 'C' && cursor < n) { cursor++; printf("\x1b[C"); }
+                else if (seq[1] == 'D' && cursor) { cursor--; printf("\x1b[D"); }
+                fflush(stdout);
+            } continue; }
+        if (isprint(c) && n + 1 < cap) { memmove(buf + cursor + 1, buf + cursor, n - cursor); buf[cursor++] = (char)c; n++; buf[n] = 0; printf("\r\x1b[Kvsh> %s\x1b[%zuD", buf, n - cursor); fflush(stdout); }
     }
 }
 
-static int split(char *line, char **argv, int max) {
-    int argc = 0;
-    char *p = line;
-    while (*p && argc < max - 1) {
+static int tokenize(char *s, char **tok) {
+    int n = 0; char *p = s;
+    while (*p && n < MAX_TOK - 1) {
         while (isspace((unsigned char)*p)) p++;
         if (!*p) break;
-        if (*p == '|') { argv[argc++] = strdup("|"); p++; continue; }
-        if (*p == '>' || *p == '<') { char op[3] = { *p, 0, 0 }; if (p[1] == '>' && *p == '>') op[1] = '>'; argv[argc++] = strdup(op); p += op[1] ? 2 : 1; continue; }
-        char *start = p; int quote = 0;
+        if (strchr("|<>", *p)) {
+            if (*p == '>' && p[1] == '>') tok[n++] = strdup(">>"), p += 2;
+            else { char x[2] = {*p, 0}; tok[n++] = strdup(x); p++; }
+            continue;
+        }
+        char quote = 0; char tmp[MAX_LINE]; size_t j = 0;
         while (*p) {
-            if ((*p == '\'' || *p == '"') && (!quote || quote == *p)) quote = quote ? 0 : *p;
-            else if (!quote && (isspace((unsigned char)*p) || *p == '|' || *p == '>' || *p == '<')) break;
+            if ((*p == '\'' || *p == '"')) { if (!quote) quote = *p; else if (quote == *p) quote = 0; else tmp[j++] = *p; p++; continue; }
+            if (!quote && (isspace((unsigned char)*p) || strchr("|<>", *p))) break;
+            if (j + 1 < sizeof(tmp)) tmp[j++] = *p;
             p++;
         }
-        size_t len = (size_t)(p - start);
-        char *tok = malloc(len + 1); size_t j = 0;
-        for (size_t i = 0; i < len; i++) if (start[i] != '\'' && start[i] != '"') tok[j++] = start[i];
-        tok[j] = 0; argv[argc++] = tok;
+        tmp[j] = 0; tok[n++] = strdup(tmp);
     }
-    argv[argc] = NULL; return argc;
+    tok[n] = NULL; return n;
 }
 
 static int builtin(char **a) {
     if (!a[0]) return 1;
     if (!strcmp(a[0], "exit")) exit(0);
-    if (!strcmp(a[0], "cd")) { const char *d = a[1] ? a[1] : getenv("HOME"); if (chdir(d) != 0) perror("cd"); return 1; }
-    if (!strcmp(a[0], "pwd")) { char cwd[4096]; if (getcwd(cwd, sizeof(cwd))) puts(cwd); return 1; }
-    if (!strcmp(a[0], "export")) { if (!a[1]) return 1; char *eq = strchr(a[1], '='); if (!eq) return 1; *eq = 0; setenv(a[1], eq + 1, 1); return 1; }
+    if (!strcmp(a[0], "cd")) { const char *d = a[1] ? a[1] : getenv("HOME"); if (chdir(d) < 0) perror("cd"); return 1; }
+    if (!strcmp(a[0], "pwd")) { char b[4096]; if (getcwd(b, sizeof(b))) puts(b); return 1; }
+    if (!strcmp(a[0], "export")) { if (a[1]) { char *eq = strchr(a[1], '='); if (eq) { *eq = 0; setenv(a[1], eq + 1, 1); } } return 1; }
     if (!strcmp(a[0], "unset")) { if (a[1]) unsetenv(a[1]); return 1; }
-    if (!strcmp(a[0], "history")) { for (size_t i = 0; i < history_len; i++) printf("%4zu  %s\n", i + 1, history[i]); return 1; }
-    if (!strcmp(a[0], "help")) { puts("vsh: native shell | cd pwd export unset history exit"); return 1; }
+    if (!strcmp(a[0], "history")) { for (size_t i = 0; i < hist_n; i++) printf("%4zu  %s\n", i + 1, hist[i]); return 1; }
+    if (!strcmp(a[0], "help")) { puts("vsh: cd pwd export unset history exit help"); return 1; }
     return 0;
 }
 
-static int run_simple(char **argv, int in_fd, int out_fd) {
-    posix_spawn_file_actions_t fa; posix_spawn_file_actions_init(&fa);
-    if (in_fd != STDIN_FILENO) { posix_spawn_file_actions_adddup2(&fa, in_fd, STDIN_FILENO); posix_spawn_file_actions_addclose(&fa, in_fd); }
-    if (out_fd != STDOUT_FILENO) { posix_spawn_file_actions_adddup2(&fa, out_fd, STDOUT_FILENO); posix_spawn_file_actions_addclose(&fa, out_fd); }
-    pid_t pid; int rc = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ); posix_spawn_file_actions_destroy(&fa);
-    if (rc) { errno = rc; perror(argv[0]); return 127; }
-    int status; waitpid(pid, &status, 0); return WIFEXITED(status) ? WEXITSTATUS(status) : 128;
-}
+static void wait_all(pid_t *pids, int n) { for (int i = 0; i < n; i++) waitpid(pids[i], NULL, 0); }
 
-static int execute(char **t, int argc) {
-    int start = 0, last = 0, in_fd = STDIN_FILENO, rc = 0;
-    while (start < argc) {
-        int end = start; while (end < argc && strcmp(t[end], "|") != 0) end++;
-        char *av[MAX_ARGS]; int ac = 0; int out_fd = STDOUT_FILENO;
-        for (int i = start; i < end && ac < MAX_ARGS - 1; i++) {
-            if ((!strcmp(t[i], ">") || !strcmp(t[i], ">>")) && i + 1 < end) {
-                int flags = O_WRONLY|O_CREAT|(strcmp(t[i], ">>") == 0 ? O_APPEND : O_TRUNC);
-                out_fd = open(t[++i], flags, 0644); if (out_fd < 0) { perror(t[i]); return 1; }
-            } else if (!strcmp(t[i], "<") && i + 1 < end) {
-                int fd = open(t[++i], O_RDONLY); if (fd < 0) { perror(t[i]); return 1; }
-                if (in_fd != STDIN_FILENO) close(in_fd); in_fd = fd;
-            } else av[ac++] = t[i];
+static int execute(char **tok, int ntok) {
+    char **cmd[MAX_TOK]; int ncmd = 0; cmd[0] = tok;
+    for (int i = 0; i < ntok; i++) if (!strcmp(tok[i], "|")) { tok[i] = NULL; cmd[++ncmd] = &tok[i + 1]; }
+    ncmd++;
+    pid_t pids[MAX_TOK]; int pipes[MAX_TOK][2];
+    for (int i = 0; i < ncmd - 1; i++) if (pipe(pipes[i]) < 0) return 1;
+    for (int c = 0; c < ncmd; c++) {
+        pid_t pid = fork();
+        if (pid < 0) return 1;
+        if (pid == 0) {
+            signal(SIGINT, SIG_DFL);
+            if (c) dup2(pipes[c - 1][0], STDIN_FILENO);
+            if (c < ncmd - 1) dup2(pipes[c][1], STDOUT_FILENO);
+            for (int j = 0; j < ncmd - 1; j++) { close(pipes[j][0]); close(pipes[j][1]); }
+            char *a[MAX_TOK]; int na = 0;
+            for (int i = 0; cmd[c][i] && na < MAX_TOK - 1; i++) {
+                if ((!strcmp(cmd[c][i], ">") || !strcmp(cmd[c][i], ">>")) && cmd[c][i + 1]) {
+                    int flags = O_WRONLY | O_CREAT | (!strcmp(cmd[c][i], ">>") ? O_APPEND : O_TRUNC);
+                    int fd = open(cmd[c][++i], flags, 0644); if (fd < 0) { perror("open"); _exit(1); }
+                    dup2(fd, STDOUT_FILENO); close(fd);
+                } else if (!strcmp(cmd[c][i], "<") && cmd[c][i + 1]) {
+                    int fd = open(cmd[c][++i], O_RDONLY); if (fd < 0) { perror("open"); _exit(1); }
+                    dup2(fd, STDIN_FILENO); close(fd);
+                } else a[na++] = cmd[c][i];
+            }
+            a[na] = NULL;
+            execvp(a[0], a); perror(a[0]); _exit(127);
         }
-        av[ac] = NULL;
-        if (ac) rc = run_simple(av, in_fd, out_fd);
-        if (out_fd != STDOUT_FILENO) close(out_fd);
-        if (in_fd != STDIN_FILENO) close(in_fd);
-        in_fd = STDIN_FILENO;
-        if (end == argc) break;
-        int pipefd[2]; if (pipe(pipefd) != 0) return 1;
-        in_fd = pipefd[0]; out_fd = pipefd[1];
-        /* The simple runner waits by design; pipelines are handled by the fast path below. */
-        close(pipefd[0]); close(pipefd[1]);
-        (void)out_fd;
-        start = end + 1; last = start;
+        pids[c] = pid;
     }
-    return rc;
+    for (int i = 0; i < ncmd - 1; i++) { close(pipes[i][0]); close(pipes[i][1]); }
+    wait_all(pids, ncmd);
+    return 0;
 }
 
 int main(void) {
-    signal(SIGINT, SIG_IGN); signal(SIGTTOU, SIG_IGN); raw_tty();
+    setup_tty(); signal(SIGINT, SIG_IGN);
     char line[MAX_LINE];
-    while (1) {
-        int n = read_line(line, sizeof(line));
-        if (n <= 0) break;
-        if (line[n - 1] == '\n') line[n - 1] = 0;
+    while (read_line(line, sizeof(line)) >= 0) {
+        size_t n = strlen(line); if (n && line[n - 1] == '\n') line[n - 1] = 0;
         if (!*line) continue;
-        hist_add(line);
-        char *tok[MAX_ARGS]; int argc = split(line, tok, MAX_ARGS);
-        if (argc && !builtin(tok)) execute(tok, argc);
-        for (int i = 0; i < argc; i++) free(tok[i]);
+        add_history(line);
+        char *tok[MAX_TOK]; int ntok = tokenize(line, tok);
+        if (ntok == 0) continue;
+        if (ntok > 0 && !strchr(tok[0], '/')) { char *tmp[MAX_TOK]; for (int i = 0; i < ntok; i++) tmp[i] = tok[i]; tmp[ntok] = NULL; if (ntok && !builtin(tmp)) execute(tok, ntok); }
+        for (int i = 0; i < ntok; i++) free(tok[i]);
     }
     return 0;
 }
