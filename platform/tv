@@ -15,7 +15,7 @@ tv — Termux VibeCode control plane
   tv tune [detect|apply]
   tv shell
   tv workspace <name>
-  tv services [status|start|stop|restart] [name]
+  tv services [status|start|stop|restart|supervise] [name]
   tv ai <prompt>
   tv version
 EOF
@@ -94,6 +94,7 @@ case "${1:-}" in
         [[ -n "${3:-}" ]] || { usage; exit 2; }
         exec python3 "$STATE/supervisor.py" "$op" "$3"
         ;;
+      supervise) exec python3 "$STATE/supervisor.py" supervise ;;
       *) usage; exit 2 ;;
     esac
     ;;
