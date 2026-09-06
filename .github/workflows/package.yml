@@ -1,0 +1,46 @@
+name: Termux Package
+
+on:
+  push:
+    branches: [main, 'forge/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: vibecode-package-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tvsh:
+    name: tvsh (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build tvsh with Termux package builder
+        env:
+          TERMUX_ARCH: ${{ matrix.arch }}
+        run: bash ci/build-termux-package.sh
+      - name: Verify package artifact
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          shopt -s nullglob
+          packages=(dist-${ARCH}/tvsh_*.deb)
+          test "${#packages[@]}" -eq 1
+          package="${packages[0]}"
+          dpkg-deb --info "$package" >/dev/null
+          listing="$(dpkg-deb --contents "$package" | awk 'NF {print $NF}' | sed 's#^\./##')"
+          printf '%s\n' "$listing"
+          printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/bin/vsh'
+          printf '%s\n' "$listing" | grep -Fxq 'data/data/com.termux/files/usr/share/doc/tvsh/README'
+      - name: Upload package
+        uses: actions/upload-artifact@v6
+        with:
+          name: tvsh-${{ matrix.arch }}-deb
+          path: dist-${{ matrix.arch }}/tvsh_*.deb
+          if-no-files-found: error

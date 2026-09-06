@@ -1,0 +1,53 @@
+name: Android Emulator
+
+on:
+  push:
+    branches: [main, 'forge/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: vibecode-android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  termux-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34, 35]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download official Termux APK
+        run: python3 ci/download-termux.py "$RUNNER_TEMP/termux-app.apk"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Termux on Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          cores: 4
+          ram-size: 6144
+          heap-size: 512M
+          disk-size: 8192M
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          emulator-boot-timeout: 420
+          script: bash ci/android-emulator-smoke.sh

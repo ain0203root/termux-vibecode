@@ -1,0 +1,2 @@
+tvsh installs the VibeCode native shell as /data/data/com.termux/files/usr/bin/vsh.
+It is intentionally small, native, and userland-only.

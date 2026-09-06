@@ -17,5 +17,8 @@ def test_status_has_machine_fields():
 
 def test_doctor_shape():
     data = mod.doctor()
-    assert isinstance(data['checks'], dict)
-    assert isinstance(data['missing'], list)
+    assert isinstance(data['required'], dict)
+    assert isinstance(data['optional'], dict)
+    assert isinstance(data['missing_required'], list)
+    assert isinstance(data['missing_optional'], list)
+    assert data['ok'] == (not data['missing_required'])

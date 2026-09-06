@@ -4,19 +4,44 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: vibecode-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Shell syntax
-        run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh bench/throughput.sh
+        run: bash -n platform/tv platform/tune platform/install.sh platform/uninstall.sh platform/tv-ai tests/vsh_smoke.sh tests/platform_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
+      - name: Shell static analysis
+        run: shellcheck -S warning -e SC1007,SC2016 platform/tv platform/tune platform/install.sh platform/uninstall.sh platform/tv-ai tests/vsh_smoke.sh tests/platform_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
+      - name: Native static analysis
+        run: clang --analyze -std=c11 -D_GNU_SOURCE native/vsh/vsh.c native/vsh/bench.c
       - name: Native build
         run: make -C native/vsh clean all
       - name: Native smoke
         run: bash tests/vsh_smoke.sh
+      - name: Native benchmark
+        run: make -C native/vsh check
+      - name: Installed platform smoke
+        run: bash tests/platform_smoke.sh
+      - name: Sanitizer build and smoke
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          make -C native/vsh clean all CFLAGS='-O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer'
+          test "$(printf '%s\n' 'echo sanitizer-ok' | native/vsh/vsh)" = 'sanitizer-ok'
+          test "$(printf '%s\n' 'printf hello | tr a-z A-Z' | native/vsh/vsh)" = 'HELLO'
+          test "$(printf '%s\n' 'export VSH_SAN=ok' 'echo $VSH_SAN' | native/vsh/vsh)" = 'ok'
+          test "$(printf '%s\n' 'false' 'echo $?' | native/vsh/vsh)" = '1'
+          test "$(printf '%s\n' 'echo "quoted value"' | native/vsh/vsh)" = 'quoted value'
       - name: Python tests
-        run: python -m pip install -q pytest && pytest -q tests/test_tvd.py
+        run: python -m pip install -q pytest && pytest -q tests/test_tvd.py tests/test_supervisor.py tests/test_capabilities.py
+      - name: Compile CI helpers
+        run: python -m py_compile ci/download-termux.py
