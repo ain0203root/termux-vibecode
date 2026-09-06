@@ -18,6 +18,10 @@ jobs:
           python-version: '3.12'
       - name: Shell syntax
         run: bash -n platform/tv platform/tune platform/install.sh tests/vsh_smoke.sh tests/platform_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
+      - name: Shell static analysis
+        run: shellcheck platform/tv platform/tune platform/install.sh platform/tv-ai tests/vsh_smoke.sh tests/platform_smoke.sh bench/throughput.sh ci/android-emulator-smoke.sh ci/build-termux-package.sh
+      - name: Native static analysis
+        run: clang --analyze -std=c11 -D_GNU_SOURCE native/vsh/vsh.c
       - name: Native build
         run: make -C native/vsh clean all
       - name: Native smoke
