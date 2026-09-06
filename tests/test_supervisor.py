@@ -1,6 +1,5 @@
 import importlib.util
 import os
-import time
 from pathlib import Path
 
 
@@ -29,6 +28,26 @@ def test_service_config_is_parseable():
         name, command = line.split("=", 1)
         assert name.strip()
         assert command.strip()
+
+
+def test_invalid_service_names_are_rejected(tmp_path):
+    supervisor = load_module()
+    supervisor.HOME = tmp_path / ".vibecode"
+    supervisor.CONF = supervisor.HOME / "services.conf"
+    supervisor.RUN = supervisor.HOME / "run"
+    supervisor.CONF.parent.mkdir(parents=True)
+    supervisor.CONF.write_text(
+        "good-name=echo ok\n../escape=echo bad\ngood-name=echo duplicate\n\n",
+        encoding="utf-8",
+    )
+    services = supervisor.load()
+    assert [service.name for service in services] == ["good-name"]
+    try:
+        supervisor.path_for("../escape")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("path_for accepted a traversal service name")
 
 
 def test_start_snapshot_and_stop_are_lifecycle_safe(tmp_path):
