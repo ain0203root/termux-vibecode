@@ -62,6 +62,18 @@ def _proc_starttime(pid: int) -> int | None:
         return None
 
 
+def _proc_state(pid: int) -> str | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        close = stat.rfind(")")
+        if close < 0:
+            return None
+        fields = stat[close + 2 :].split()
+        return fields[0] if fields else None
+    except OSError:
+        return None
+
+
 def _read_record(path: Path) -> tuple[int, int | None] | None:
     try:
         raw = path.read_text(encoding="utf-8").strip()
@@ -71,6 +83,14 @@ def _read_record(path: Path) -> tuple[int, int | None] | None:
         return int(raw), None
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return None
+
+
+def _remove_stale(path: Path, pid: int) -> None:
+    try:
+        os.waitpid(pid, os.WNOHANG)
+    except (ChildProcessError, PermissionError, ProcessLookupError):
+        pass
+    path.unlink(missing_ok=True)
 
 
 def running(name: str) -> int | None:
@@ -87,6 +107,9 @@ def running(name: str) -> int | None:
         return None
     if expected_start is not None and _proc_starttime(pid) != expected_start:
         path.unlink(missing_ok=True)
+        return None
+    if _proc_state(pid) == "Z":
+        _remove_stale(path, pid)
         return None
     return pid
 
@@ -164,6 +187,7 @@ def supervise() -> None:
         now = time.monotonic()
         for service in services:
             if running(service.name) is not None:
+                backoff[service.name] = service.delay
                 continue
             if not service.restart or now < next_start[service.name]:
                 continue
