@@ -50,7 +50,7 @@ grep -qx 'SELF_TEST=PASS' <(tail -n 1 "$SELFTEST_FILE")
 export PREFIX="$real_prefix"
 printf '%s\n' 'checkpoint=self-test'
 
-printf '%s\n' 'installed-ok' | bash "$TV" shell | grep -qx 'installed-ok'
+printf '%s\n' 'echo installed-ok' | bash "$TV" shell | grep -qx 'installed-ok'
 printf '%s\n' 'checkpoint=shell'
 
 set +e
@@ -64,7 +64,7 @@ bash "$TV" status >"$STATUS_FILE"
 python3 - "$STATUS_FILE" <<'PY'
 import json
 import sys
-with open(sys.argv[1], encoding="utf-8") as stream:
+with open(sys.argv[1], encoding='utf-8') as stream:
     payload = json.load(stream)
 assert 'platform' in payload
 assert 'cpu_count' in payload
